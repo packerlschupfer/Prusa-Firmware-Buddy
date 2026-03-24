@@ -5,7 +5,7 @@
 #include "../nhttp/headers.h"
 #include "../nhttp/gcode_upload.h"
 #include "../nhttp/job_command.h"
-#include "../nhttp/temp_command.h"
+#include "../nhttp/control_command.h"
 #include "../nhttp/send_json.h"
 #include "../wui_api.h"
 
@@ -29,7 +29,7 @@ using nhttp::printer::FileCommand;
 using nhttp::printer::FileInfo;
 using nhttp::printer::GcodeUpload;
 using nhttp::printer::JobCommand;
-using nhttp::printer::TempCommand;
+using nhttp::printer::ControlCommand;
 using transfers::ChangedPath;
 
 using Type = ChangedPath::Type;
@@ -186,10 +186,10 @@ optional<ConnectionState> PrusaLinkApi::accept(const RequestParser &parser) cons
         const auto v1_suffix = *v1_suffix_opt;
         if (v1_suffix == "storage") {
             return get_only(SendJson(EmptyRenderer(get_storage), parser.can_keep_alive()));
-        } else if (v1_suffix == "preheat") {
+        } else if (v1_suffix == "control") {
             if (parser.method == Method::Post) {
                 if (parser.content_length.has_value()) {
-                    return TempCommand(*parser.content_length, parser.can_keep_alive(), parser.accepts_json);
+                    return ControlCommand(*parser.content_length, parser.can_keep_alive(), parser.accepts_json);
                 } else {
                     return StatusPage(Status::LengthRequired, StatusPage::CloseHandling::ErrorClose, parser.accepts_json);
                 }
