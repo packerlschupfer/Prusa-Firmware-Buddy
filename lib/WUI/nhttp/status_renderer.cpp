@@ -6,9 +6,17 @@
 #include <transfers/monitor.hpp>
 #include <segmented_json_macros.h>
 
+#include "printers.h"
+
 #include <option/buddy_enable_connect.h>
 #if BUDDY_ENABLE_CONNECT()
     #include <connect/connect.hpp>
+#endif
+
+#if PRINTER_IS_PRUSA_COREONE()
+    #include <feature/chamber/chamber.hpp>
+    #include <feature/xbuddy_extension/xbuddy_extension.hpp>
+    #include <leds/side_strip_handler.hpp>
 #endif
 
 using namespace marlin_server;
@@ -28,6 +36,14 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
     uint32_t time_to_end = marlin_vars().time_to_end;
     uint32_t time_to_pause = marlin_vars().time_to_pause;
     auto link_state = printer_state::get_state(false);
+
+#if PRINTER_IS_PRUSA_COREONE()
+    auto chamber_temp = buddy::chamber().current_temperature();
+    auto chamber_target = buddy::chamber().target_temperature();
+    auto xbe_state = buddy::xbuddy_extension().get_fan12_state();
+    int8_t chamber_fan_pwm = xbe_state.fan1_fan2_target_pwm.transform(buddy::XBuddyExtension::FanPWM::to_percent_static).value_or(-1);
+    int8_t chamber_led = static_cast<int8_t>(static_cast<uint16_t>(leds::SideStripHandler::instance().get_max_brightness()) * 100 / 255);
+#endif
 
     // Keep the indentation of the JSON in here!
     // clang-format off
@@ -76,6 +92,19 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
             JSON_FIELD_INT("fan_hotend", marlin_vars().active_hotend().heatbreak_fan_rpm) JSON_COMMA;
             JSON_FIELD_INT("fan_print", marlin_vars().active_hotend().print_fan_rpm);
         JSON_OBJ_END;
+#if PRINTER_IS_PRUSA_COREONE()
+        if (chamber_temp.has_value()) {
+            JSON_COMMA;
+            JSON_FIELD_OBJ("chamber");
+                JSON_FIELD_FFIXED("temp", chamber_temp.value_or(0), 1) JSON_COMMA;
+                JSON_FIELD_INT("target_temp", chamber_target.value_or(0)) JSON_COMMA;
+                JSON_FIELD_INT("fan_1_rpm", xbe_state.fan1rpm) JSON_COMMA;
+                JSON_FIELD_INT("fan_2_rpm", xbe_state.fan2rpm) JSON_COMMA;
+                JSON_FIELD_INT("fan_pwm_target", chamber_fan_pwm) JSON_COMMA;
+                JSON_FIELD_INT("led_intensity", chamber_led);
+            JSON_OBJ_END;
+        }
+#endif
     JSON_OBJ_END;
     JSON_END;
     // clang-format on
