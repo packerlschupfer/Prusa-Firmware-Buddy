@@ -21,6 +21,9 @@
 #include <option/has_mmu2.h>
 #include <version/version.hpp>
 #include <common/printer_model.hpp>
+#if PRINTER_IS_PRUSA_COREONE()
+    #include <feature/chamber/chamber.hpp>
+#endif
 
 using namespace json;
 using namespace marlin_server;
@@ -37,6 +40,11 @@ JsonResult get_printer(size_t resume_point, JsonOutput &output) {
     marlin_vars_t &vars = marlin_vars();
     const FilamentType filament = config_store().get_filament_type(vars.active_extruder);
     const FilamentTypeParameters filament_material = filament.parameters();
+
+#if PRINTER_IS_PRUSA_COREONE()
+    auto chamber_temp = buddy::chamber().current_temperature();
+    auto chamber_target = buddy::chamber().target_temperature();
+#endif
 
     bool operational = true;
     bool paused = false;
@@ -167,6 +175,16 @@ JsonResult get_printer(size_t resume_point, JsonOutput &output) {
                 JSON_FIELD_FFIXED("target", vars.target_bed, 1) JSON_COMMA;
                 JSON_FIELD_INT("offset", 0);
             JSON_OBJ_END;
+#if PRINTER_IS_PRUSA_COREONE()
+            if (chamber_temp.has_value()) {
+                JSON_COMMA;
+                JSON_FIELD_OBJ("chamber");
+                    JSON_FIELD_FFIXED("actual", chamber_temp.value_or(0), 1) JSON_COMMA;
+                    JSON_FIELD_FFIXED("target", chamber_target.value_or(0), 1) JSON_COMMA;
+                    JSON_FIELD_INT("offset", 0);
+                JSON_OBJ_END;
+            }
+#endif
         JSON_OBJ_END JSON_COMMA;
 
         JSON_FIELD_OBJ("state")
