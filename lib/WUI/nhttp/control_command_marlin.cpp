@@ -119,4 +119,12 @@ void ControlCommand::emergency_stop() {
     marlin_client::gcode("M112");
 }
 
+void ControlCommand::reboot() {
+    marlin_client::gcode("M997");
+}
+
+void ControlCommand::send_gcode(const char *gcode) {
+    marlin_client::gcode(gcode);
+}
+
 } // namespace nhttp::printer

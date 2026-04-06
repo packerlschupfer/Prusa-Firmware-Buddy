@@ -342,7 +342,7 @@ namespace {
 } // namespace
 
 UploadHooks::Result GcodeUpload::check_filename(const char *filename) const {
-    if (!filename_is_printable(filename)) {
+    if (!filename_is_printable(filename) && !filename_is_firmware(filename)) {
         return make_tuple(Status::UnsupportedMediaType, "Not a GCODE");
     }
 
