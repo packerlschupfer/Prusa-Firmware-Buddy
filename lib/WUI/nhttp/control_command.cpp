@@ -52,6 +52,17 @@ StatusPage ControlCommand::process() {
     optional<float> move_e;
     optional<int> feedrate;
 
+    // Filament
+    bool do_load_filament = false;
+    bool do_unload_filament = false;
+    bool do_purge = false;
+    bool do_filament_change = false;
+
+    // Printer state
+    bool do_cooldown = false;
+    bool do_set_ready = false;
+    bool do_cancel_ready = false;
+
     // Misc
     bool do_motors_off = false;
     bool do_stop = false;
@@ -82,6 +93,13 @@ StatusPage ControlCommand::process() {
                 else if (key == "home_x") { do_home = true; home_x = true; }
                 else if (key == "home_y") { do_home = true; home_y = true; }
                 else if (key == "home_z") { do_home = true; home_z = true; }
+                else if (key == "load_filament") { do_load_filament = true; }
+                else if (key == "unload_filament") { do_unload_filament = true; }
+                else if (key == "purge") { do_purge = true; }
+                else if (key == "filament_change") { do_filament_change = true; }
+                else if (key == "cooldown") { do_cooldown = true; }
+                else if (key == "set_ready") { do_set_ready = true; }
+                else if (key == "cancel_ready") { do_cancel_ready = true; }
                 else if (key == "motors_off") { do_motors_off = true; }
                 else if (key == "stop") { do_stop = true; }
                 else if (key == "reboot") { do_reboot = true; }
@@ -160,6 +178,17 @@ StatusPage ControlCommand::process() {
 
     // Lighting
     if (led.has_value()) set_led(*led);
+
+    // Filament
+    if (do_load_filament) load_filament();
+    if (do_unload_filament) unload_filament();
+    if (do_purge) purge();
+    if (do_filament_change) filament_change();
+
+    // Printer state
+    if (do_cooldown) cooldown();
+    if (do_set_ready) set_ready();
+    if (do_cancel_ready) cancel_ready();
 
     // Motion
     if (do_motors_off) motors_off();

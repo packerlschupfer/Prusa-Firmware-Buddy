@@ -127,4 +127,36 @@ void ControlCommand::send_gcode(const char *gcode) {
     marlin_client::gcode(gcode);
 }
 
+void ControlCommand::load_filament() {
+    marlin_client::gcode("M701");
+}
+
+void ControlCommand::unload_filament() {
+    marlin_client::gcode("M702");
+}
+
+void ControlCommand::purge() {
+    marlin_client::gcode("M701 L0");
+}
+
+void ControlCommand::filament_change() {
+    marlin_client::gcode("M600");
+}
+
+void ControlCommand::cooldown() {
+    marlin_client::gcode("M104 S0");
+    marlin_client::gcode("M140 S0");
+#if PRINTER_IS_PRUSA_COREONE()
+    buddy::chamber().set_target_temperature(std::nullopt);
+#endif
+}
+
+void ControlCommand::set_ready() {
+    marlin_client::gcode("M155 S2 C7"); // ensure reporting is on
+}
+
+void ControlCommand::cancel_ready() {
+    // No specific G-code, handled at application level
+}
+
 } // namespace nhttp::printer

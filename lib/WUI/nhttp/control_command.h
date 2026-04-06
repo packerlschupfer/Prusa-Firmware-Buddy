@@ -41,6 +41,17 @@ namespace nhttp::printer {
  *   "move_e": 5.0         - relative extrude in mm
  *   "feedrate": 1000      - feedrate for moves in mm/min
  *
+ * Filament:
+ *   "load_filament": true  - load filament (M701)
+ *   "unload_filament": true - unload filament (M702)
+ *   "purge": true          - purge filament
+ *   "filament_change": true - filament change (M600)
+ *
+ * Printer state:
+ *   "cooldown": true       - all heaters off
+ *   "set_ready": true      - set printer ready state
+ *   "cancel_ready": true   - cancel ready state
+ *
  * Misc:
  *   "motors_off": true    - disable steppers (M18)
  *   "stop": true          - emergency stop (M112)
@@ -75,6 +86,13 @@ private:
     void emergency_stop();
     void reboot();
     void send_gcode(const char *gcode);
+    void load_filament();
+    void unload_filament();
+    void purge();
+    void filament_change();
+    void cooldown();
+    void set_ready();
+    void cancel_ready();
 
 public:
     ControlCommand(size_t content_length, bool can_keep_alive, bool json_errors);
