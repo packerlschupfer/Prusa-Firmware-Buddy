@@ -122,8 +122,8 @@ endif()
 # /web directory
 add_gzip_resource("web/favicon.ico" "/web/favicon.ico")
 add_gzip_resource("web/index.html" "/web/index.html")
-add_gzip_resource("web/main.5d46ca5202a66aa9cea9.js" "/web/main.5d46ca5202a66aa9cea9.js")
-add_gzip_resource("web/main.2a5c0a372fdf2568ef04.css" "/web/main.2a5c0a372fdf2568ef04.css")
+add_gzip_resource("web/main.c60fe3bab07ead7fc1ff.js" "/web/main.c60fe3bab07ead7fc1ff.js")
+add_gzip_resource("web/main.c99b6557ed5d86f96519.css" "/web/main.c99b6557ed5d86f96519.css")
 
 # add languages
 if(${TRANSLATIONS_IN_EXTFLASH})
