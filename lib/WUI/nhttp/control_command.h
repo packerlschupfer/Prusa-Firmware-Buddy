@@ -44,6 +44,8 @@ namespace nhttp::printer {
  * Misc:
  *   "motors_off": true    - disable steppers (M18)
  *   "stop": true          - emergency stop (M112)
+ *   "reboot": true        - reboot printer
+ *   "gcode": "M220 S100"  - send arbitrary G-code command
  *
  * All fields optional. Omitted fields are left unchanged.
  */
@@ -71,6 +73,8 @@ private:
     void relative_move(float x, float y, float z, float e, int feedrate);
     void motors_off();
     void emergency_stop();
+    void reboot();
+    void send_gcode(const char *gcode);
 
 public:
     ControlCommand(size_t content_length, bool can_keep_alive, bool json_errors);

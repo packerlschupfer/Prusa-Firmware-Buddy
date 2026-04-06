@@ -55,6 +55,8 @@ StatusPage ControlCommand::process() {
     // Misc
     bool do_motors_off = false;
     bool do_stop = false;
+    bool do_reboot = false;
+    const char *gcode_cmd = nullptr;
 
     bool got_any_field = false;
 
@@ -65,6 +67,14 @@ StatusPage ControlCommand::process() {
         const auto &key = event.key.value();
         const auto &val = event.value.value();
 
+        if (event.type == Type::String) {
+            if (key == "gcode") {
+                gcode_cmd = val.data();
+                got_any_field = true;
+            }
+            return;
+        }
+
         if (event.type == Type::Primitive) {
             // Check for boolean "true"/"false" first
             if (val == "true") {
@@ -74,6 +84,7 @@ StatusPage ControlCommand::process() {
                 else if (key == "home_z") { do_home = true; home_z = true; }
                 else if (key == "motors_off") { do_motors_off = true; }
                 else if (key == "stop") { do_stop = true; }
+                else if (key == "reboot") { do_reboot = true; }
                 got_any_field = true;
                 return;
             }
@@ -161,6 +172,12 @@ StatusPage ControlCommand::process() {
             move_e.value_or(0),
             feedrate.value_or(1000));
     }
+
+    // G-code passthrough
+    if (gcode_cmd) send_gcode(gcode_cmd);
+
+    // Reboot (last, since it won't return)
+    if (do_reboot) reboot();
 
     return StatusPage(Status::NoContent, can_keep_alive ? StatusPage::CloseHandling::KeepAlive : StatusPage::CloseHandling::Close, json_errors);
 }
