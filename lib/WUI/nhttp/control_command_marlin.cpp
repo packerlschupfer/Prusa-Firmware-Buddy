@@ -150,8 +150,13 @@ void ControlCommand::filament_change() {
 void ControlCommand::cooldown() {
     marlin_client::gcode("M104 S0");
     marlin_client::gcode("M140 S0");
+    marlin_client::gcode("M107"); // print fan off
 #if PRINTER_IS_PRUSA_COREONE()
     buddy::chamber().set_target_temperature(std::nullopt);
+    // Set chamber fans to auto (will stop since no target temp)
+    buddy::xbuddy_extension().set_fan_target_pwm(
+        buddy::XBuddyExtension::Fan::cooling_fan_1,
+        buddy::XBuddyExtension::FanPWMOrAuto(pwm_auto));
 #endif
 }
 
