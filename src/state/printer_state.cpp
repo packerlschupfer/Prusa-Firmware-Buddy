@@ -414,7 +414,16 @@ StateWithDialog get_state_with_dialog(bool ready) {
                 const Response *buttons = ClientResponses::get_available_responses(GetEnumFromPhaseIndex<PhasesLoadUnload>(data.GetPhase())).data();
                 return { state, attention_code, fsm_gen, buttons };
             }
-        } // TODO: handle normal load unload
+        } else {
+            // Normal (non-printing) load/unload: always expose the dialog with available buttons
+            auto phase = GetEnumFromPhaseIndex<PhasesLoadUnload>(data.GetPhase());
+            const auto &responses = ClientResponses::get_available_responses(phase);
+            // Only report as dialog if there are actual buttons to press
+            if (responses[0] != Response::_none) {
+                const Response *buttons = responses.data();
+                return { state, ErrCode::CONNECT_FILAMENT_RUNOUT, fsm_gen, buttons };
+            }
+        }
         break;
     case ClientFSM::QuickPause: {
         const Response *available_responses = ClientResponses::get_available_responses(GetEnumFromPhaseIndex<PhasesQuickPause>(data.GetPhase())).data();
