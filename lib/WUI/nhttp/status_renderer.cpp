@@ -13,6 +13,8 @@
     #include <connect/connect.hpp>
 #endif
 
+#include <marlin_server_types/general_response.hpp>
+
 #if PRINTER_IS_PRUSA_COREONE()
     #include <feature/chamber/chamber.hpp>
     #include <feature/xbuddy_extension/xbuddy_extension.hpp>
@@ -35,7 +37,14 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
 
     uint32_t time_to_end = marlin_vars().time_to_end;
     uint32_t time_to_pause = marlin_vars().time_to_pause;
-    auto link_state = printer_state::get_state(false);
+    auto state_with_dialog = printer_state::get_state_with_dialog(false);
+    auto link_state = state_with_dialog.device_state;
+
+    // Dialog info for remote control
+    bool has_dialog = state_with_dialog.dialog.has_value();
+    uint32_t dialog_id = has_dialog ? state_with_dialog.dialog->dialog_id.to_uint32_t() : 0;
+    uint32_t dialog_code = state_with_dialog.code_num();
+    const Response *dialog_buttons = state_with_dialog.buttons();
 
 #if PRINTER_IS_PRUSA_COREONE()
     auto chamber_temp = buddy::chamber().current_temperature();
@@ -105,6 +114,17 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
             JSON_OBJ_END;
         }
 #endif
+        if (has_dialog) {
+            JSON_COMMA;
+            JSON_FIELD_OBJ("dialog");
+                JSON_FIELD_INT("id", dialog_id) JSON_COMMA;
+                JSON_FIELD_INT("code", dialog_code) JSON_COMMA;
+                JSON_FIELD_STR("button0", (dialog_buttons && dialog_buttons[0] != Response::_none) ? to_str(dialog_buttons[0]) : "") JSON_COMMA;
+                JSON_FIELD_STR("button1", (dialog_buttons && dialog_buttons[0] != Response::_none && dialog_buttons[1] != Response::_none) ? to_str(dialog_buttons[1]) : "") JSON_COMMA;
+                JSON_FIELD_STR("button2", (dialog_buttons && dialog_buttons[0] != Response::_none && dialog_buttons[1] != Response::_none && dialog_buttons[2] != Response::_none) ? to_str(dialog_buttons[2]) : "") JSON_COMMA;
+                JSON_FIELD_STR("button3", (dialog_buttons && dialog_buttons[0] != Response::_none && dialog_buttons[1] != Response::_none && dialog_buttons[2] != Response::_none && dialog_buttons[3] != Response::_none) ? to_str(dialog_buttons[3]) : "");
+            JSON_OBJ_END;
+        }
     JSON_OBJ_END;
     JSON_END;
     // clang-format on

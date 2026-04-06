@@ -68,6 +68,7 @@ StatusPage ControlCommand::process() {
     bool do_stop = false;
     bool do_reboot = false;
     const char *gcode_cmd = nullptr;
+    const char *dialog_btn = nullptr;
 
     bool got_any_field = false;
 
@@ -81,6 +82,9 @@ StatusPage ControlCommand::process() {
         if (event.type == Type::String) {
             if (key == "gcode") {
                 gcode_cmd = val.data();
+                got_any_field = true;
+            } else if (key == "dialog_response") {
+                dialog_btn = val.data();
                 got_any_field = true;
             }
             return;
@@ -204,6 +208,9 @@ StatusPage ControlCommand::process() {
 
     // G-code passthrough
     if (gcode_cmd) send_gcode(gcode_cmd);
+
+    // Dialog response
+    if (dialog_btn) dialog_response(dialog_btn);
 
     // Reboot (last, since it won't return)
     if (do_reboot) reboot();
