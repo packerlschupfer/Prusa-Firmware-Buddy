@@ -54,7 +54,9 @@ with open('/tmp/swd_flash.bin', 'wb') as f:
 print(f'Flash image: {len(flash)} bytes')
 "
     echo -e "${YELLOW}Flashing via SWD...${NC}"
-    st-flash --reset write /tmp/swd_flash.bin 0x08020000
+    st-flash write /tmp/swd_flash.bin 0x08020000
+    echo -e "${YELLOW}POWER CYCLE the printer now (unplug/replug power)${NC}"
+    echo -e "${YELLOW}(Power cycle clears RAM update flag that confuses bootloader)${NC}"
 
 else
     # WiFi: upload BBF, invalidate firmware, auto-flash
