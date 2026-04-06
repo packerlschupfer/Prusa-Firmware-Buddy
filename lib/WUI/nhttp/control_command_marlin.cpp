@@ -3,6 +3,10 @@
 #include <marlin_client.hpp>
 #include <cstdio>
 #include "printers.h"
+#include <state/printer_state.hpp>
+#include <marlin_server_types/general_response.hpp>
+#include <marlin_server_types/client_fsm_types.h>
+#include <marlin_vars.hpp>
 
 #if PRINTER_IS_PRUSA_COREONE()
     #include <feature/chamber/chamber.hpp>
@@ -157,6 +161,34 @@ void ControlCommand::set_ready() {
 
 void ControlCommand::cancel_ready() {
     // No specific G-code, handled at application level
+}
+
+void ControlCommand::dialog_response(const char *button_name) {
+    Response resp = from_str(std::string_view(button_name));
+    if (resp == Response::_none) {
+        return; // Invalid button name
+    }
+
+    // Get current dialog state
+    auto state = printer_state::get_state_with_dialog(false);
+    if (!state.dialog.has_value()) {
+        return; // No active dialog
+    }
+
+    // Get the current FSM top state for the response
+    std::optional<fsm::States::Top> top;
+    marlin_vars().peek_fsm_states([&](const auto &states) {
+        top = states.get_top();
+    });
+
+    if (!top) {
+        return;
+    }
+
+    marlin_client::FSM_encoded_response(EncodedFSMResponse {
+        .response = FSMResponseVariant::make(resp),
+        .fsm_and_phase = FSMAndPhase(top->fsm_type, top->data.GetPhase()),
+    });
 }
 
 } // namespace nhttp::printer

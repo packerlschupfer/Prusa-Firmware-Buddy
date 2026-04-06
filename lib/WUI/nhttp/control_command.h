@@ -58,6 +58,9 @@ namespace nhttp::printer {
  *   "reboot": true        - reboot printer
  *   "gcode": "M220 S100"  - send arbitrary G-code command
  *
+ * Dialog:
+ *   "dialog_response": "Continue" - respond to active dialog (button name)
+ *
  * All fields optional. Omitted fields are left unchanged.
  */
 class ControlCommand {
@@ -93,6 +96,7 @@ private:
     void cooldown();
     void set_ready();
     void cancel_ready();
+    void dialog_response(const char *button_name);
 
 public:
     ControlCommand(size_t content_length, bool can_keep_alive, bool json_errors);
