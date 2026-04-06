@@ -58,16 +58,13 @@ print(f'Flash image: {len(flash)} bytes')
 
     echo -e "${YELLOW}Resetting MCU...${NC}"
     sleep 1
-    # Clean all bootloader state and NVIC system reset:
-    # 1. Clear fw_update_flag and set bootloader state in shared RAM
-    # 2. Enable backup SRAM access (RCC_AHB1ENR bit 18, PWR_CR bit 8)
-    # 3. Clear backup SRAM to prevent power panic false trigger
-    # 4. NVIC system reset
+    # Set clean bootloader RAM state and NVIC system reset
     openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
         -c "init; halt" \
-        -c "mwb 0x20000000 0x00; mwb 0x20000001 0x01; mwb 0x20000002 0x00; mwb 0x20000003 0x01" \
-        -c "mmw 0x40023830 0x00040000 0; mmw 0x40007000 0x00000100 0" \
-        -c "mww 0x40024000 0x00000000; mww 0x40024004 0x00000000; mww 0x40024008 0x00000000; mww 0x4002400C 0x00000000" \
+        -c "mwb 0x20000000 0x00" \
+        -c "mwb 0x20000001 0x01" \
+        -c "mwb 0x20000002 0x00" \
+        -c "mwb 0x20000003 0x01" \
         -c "mww 0xE000ED0C 0x05FA0004" \
         -c "shutdown" 2>/dev/null
 

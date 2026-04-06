@@ -6,16 +6,25 @@ set(generate_hash_file_py "${CMAKE_SOURCE_DIR}/utils/resources/generate_hash_fil
 set(resources_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
 
 function(add_resource source_path install_path)
-  tar_image_add_file(resources-tarball "${source_path}" "${install_path}")
+  set(one_value_args IMAGE_NAME)
+  cmake_parse_arguments(ARG "" "${one_value_args}" "" ${ARGN})
+  if(NOT ARG_IMAGE_NAME)
+    set(ARG_IMAGE_NAME resources-image)
+  endif()
+  lfs_image_add_file(${ARG_IMAGE_NAME} "${source_path}" "${install_path}")
 endfunction()
 
 function(add_gzip_resource source_path install_path)
   set(gzip_file_path "${CMAKE_CURRENT_BINARY_DIR}/gzipped${install_path}")
   gzip_file("${source_path}" "${gzip_file_path}")
-  add_resource("${gzip_file_path}" "${install_path}")
+  add_resource("${gzip_file_path}" "${install_path}" ${ARGN})
 endfunction()
 
-function(add_header_with_revision revision_name binary_hash_file)
+function(add_header_with_revision revision_name image_name)
+  # generate hash (to a file)
+  set(binary_hash_file "${CMAKE_CURRENT_BINARY_DIR}/resources_${revision_name}_hash.bin")
+  lfs_image_generate_hash_bin_file(${image_name} "${binary_hash_file}")
+
   # generate header with the hash
   set(header_hash_file "${resources_include_dir}/resources/revision_${revision_name}.hpp")
   add_custom_command(
@@ -39,14 +48,19 @@ endfunction()
 # General
 #
 
-target_sources(firmware PUBLIC bootstrap.cpp revision.cpp tarball.cpp)
+target_sources(firmware PUBLIC bootstrap.cpp hash.cpp revision.cpp)
 target_include_directories(firmware PUBLIC "${resources_include_dir}")
 
 #
 # Standard Resources Image
 #
 
-add_tar_image(resources-tarball)
+if(PRINTER STREQUAL "MINI")
+  # Some revisions of mini has 1MB flash, so limit resource size to remaining size
+  add_lfs_image(resources-image BLOCK_SIZE 4096 BLOCK_COUNT 205)
+else()
+  add_lfs_image(resources-image BLOCK_SIZE 4096 BLOCK_COUNT 512)
+endif()
 
 if(HAS_ESP)
   set(ESP_PARTS ${CMAKE_CURRENT_BINARY_DIR}/include/esp_parts.gen)
@@ -103,25 +117,16 @@ if(PUPPY_FLASH_FW)
   if(HAS_AC_CONTROLLER)
     add_resource("${AC_CONTROLLER_BINARY_PATH}" "/puppies/fw-ac_controller.bin")
   endif()
-  if(HAS_ANFC)
-    add_resource("${ANFC_BINARY_PATH}" "/puppies/fw-anfc.bin")
-  endif()
-  if(HAS_TOOL_OFFSET_SENSOR)
-    add_resource("${TOOL_OFFSET_SENSOR_BINARY_PATH}" "/puppies/fw-tool_offset_sensor.bin")
-  endif()
-  if(HAS_INDX_HEAD)
-    add_resource("${INDX_HEAD_BINARY_PATH}" "/puppies/fw-indx_head.bin")
-  endif()
 endif()
 
 # /web directory
 add_gzip_resource("web/favicon.ico" "/web/favicon.ico")
 add_gzip_resource("web/index.html" "/web/index.html")
-add_gzip_resource("web/main.b41402ed4d6d019ca007.js" "/web/main.b41402ed4d6d019ca007.js")
-add_gzip_resource("web/main.71c989a4a290e5c10892.css" "/web/main.71c989a4a290e5c10892.css")
+add_gzip_resource("web/main.0367349e8b0eb41c407d.js" "/web/main.0367349e8b0eb41c407d.js")
+add_gzip_resource("web/main.c99b6557ed5d86f96519.css" "/web/main.c99b6557ed5d86f96519.css")
 
 # add languages
-if(${TRANSLATIONS_ENABLED})
+if(${TRANSLATIONS_IN_EXTFLASH})
   foreach(LANG ${LANGUAGES_AVAILABLE})
     if(${ENABLE_TRANSLATION_${LANG}})
       string(TOLOWER ${LANG} LANG)
@@ -141,24 +146,27 @@ if(${TRANSLATIONS_ENABLED})
 endif()
 
 # Quite OK images
-add_resource("${qoi_data_file}" "/qoi.data")
+add_resource("${qoi_data_file}" "qoi.data")
+
+# generate header with hash
+add_header_with_revision(standard resources-image)
 
 #
 # Bootloader Resources Image
 #
 if(BOOTLOADER_UPDATE)
 
+  add_lfs_image(resources-bootloader-image BLOCK_SIZE 4096 BLOCK_COUNT 64)
+
   get_dependency_directory("bootloader-${BOOTLOADER_VARIANT}" bootloader_dir)
   get_dependency_version("bootloader-${BOOTLOADER_VARIANT}" bootloader_version_str)
   set(bootloader_bin "${bootloader_dir}/bootloader.bin")
 
-  add_tar_image(bootloader-tarball)
-  tar_image_add_file(bootloader-tarball "${bootloader_bin}" "/bootloader.bin")
-  tar_image_build(bootloader-tarball)
-  get_target_property(bootloader_tar bootloader-tarball TAR_IMAGE_LOCATION)
-  set(bootloader_tar_digest "${bootloader_tar}.sha256")
-  sha256_file("${bootloader_tar}" "${bootloader_tar_digest}")
-  add_header_with_revision(bootloader "${bootloader_tar_digest}")
+  # add the bootloader.bin to the image
+  add_resource("${bootloader_bin}" "/bootloader.bin" IMAGE_NAME resources-bootloader-image)
+
+  # generate header with hash
+  add_header_with_revision(bootloader resources-bootloader-image)
 
   # parse bootloader version
   string(REGEX MATCH "([0-9]+)\.([0-9]+)\.([0-9]+)" result "${bootloader_version_str}")
@@ -221,9 +229,3 @@ if(HAS_MMU2)
 
   add_resource("${mmu_fw_bin_file}" "/mmu/fw.bin")
 endif()
-
-tar_image_build(resources-tarball)
-get_target_property(resources_tar resources-tarball TAR_IMAGE_LOCATION)
-set(resources_tar_digest "${resources_tar}.sha256")
-sha256_file("${resources_tar}" "${resources_tar_digest}")
-add_header_with_revision(standard "${resources_tar_digest}")
