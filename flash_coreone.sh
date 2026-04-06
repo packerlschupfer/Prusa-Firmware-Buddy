@@ -55,8 +55,18 @@ print(f'Flash image: {len(flash)} bytes')
 "
     echo -e "${YELLOW}Flashing via SWD...${NC}"
     st-flash write /tmp/swd_flash.bin 0x08020000
-    echo -e "${YELLOW}POWER CYCLE the printer now (unplug/replug power)${NC}"
-    echo -e "${YELLOW}(Power cycle clears RAM update flag that confuses bootloader)${NC}"
+
+    echo -e "${YELLOW}Resetting MCU...${NC}"
+    sleep 1
+    # Set clean bootloader RAM state and NVIC system reset
+    openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
+        -c "init; halt" \
+        -c "mwb 0x20000000 0x00" \
+        -c "mwb 0x20000001 0x01" \
+        -c "mwb 0x20000002 0x00" \
+        -c "mwb 0x20000003 0x01" \
+        -c "mww 0xE000ED0C 0x05FA0004" \
+        -c "shutdown" 2>/dev/null
 
 else
     # WiFi: upload BBF, invalidate firmware, auto-flash
