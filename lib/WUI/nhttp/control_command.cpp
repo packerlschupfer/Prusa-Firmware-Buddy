@@ -2,6 +2,7 @@
 #include "handler.h"
 #include "json_parser.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <cmath>
@@ -68,7 +69,13 @@ StatusPage ControlCommand::process() {
     bool do_stop = false;
     bool do_reboot = false;
     const char *gcode_cmd = nullptr;
-    const char *dialog_btn = nullptr;
+    // Dialog button name needs a null-terminated copy because the JSON parser
+    // returns a string_view with explicit length pointing into the request
+    // buffer (not null-terminated). std::string_view(const char*) reads until
+    // \0, so passing val.data() directly would include trailing JSON garbage
+    // (e.g. closing quote) and break exact-match Response lookups.
+    char dialog_btn_buf[32] = { 0 };
+    bool dialog_btn_set = false;
 
     bool got_any_field = false;
 
@@ -84,7 +91,10 @@ StatusPage ControlCommand::process() {
                 gcode_cmd = val.data();
                 got_any_field = true;
             } else if (key == "dialog_response") {
-                dialog_btn = val.data();
+                const size_t copy_len = std::min(val.size(), sizeof(dialog_btn_buf) - 1);
+                memcpy(dialog_btn_buf, val.data(), copy_len);
+                dialog_btn_buf[copy_len] = '\0';
+                dialog_btn_set = true;
                 got_any_field = true;
             }
             return;
@@ -210,7 +220,7 @@ StatusPage ControlCommand::process() {
     if (gcode_cmd) send_gcode(gcode_cmd);
 
     // Dialog response
-    if (dialog_btn) dialog_response(dialog_btn);
+    if (dialog_btn_set) dialog_response(dialog_btn_buf);
 
     // Reboot (last, since it won't return)
     if (do_reboot) reboot();
