@@ -68,12 +68,14 @@ StatusPage ControlCommand::process() {
     bool do_motors_off = false;
     bool do_stop = false;
     bool do_reboot = false;
-    const char *gcode_cmd = nullptr;
-    // Dialog button name needs a null-terminated copy because the JSON parser
-    // returns a string_view with explicit length pointing into the request
-    // buffer (not null-terminated). std::string_view(const char*) reads until
-    // \0, so passing val.data() directly would include trailing JSON garbage
-    // (e.g. closing quote) and break exact-match Response lookups.
+    // Gcode and dialog-button strings BOTH need null-terminated copies because
+    // the JSON parser returns string_views with explicit length pointing into
+    // the request buffer (NOT null-terminated). Anything that subsequently
+    // reads until \0 picks up trailing JSON syntax (e.g. closing quote/brace).
+    // Marlin's gcode parser tolerated it (stops at non-printable) but echoed
+    // the garbage in M115 output, and from_str() broke for dialog responses.
+    char gcode_cmd_buf[120] = { 0 };  // M-code lines are short; cap with margin
+    bool gcode_cmd_set = false;
     char dialog_btn_buf[32] = { 0 };
     bool dialog_btn_set = false;
 
@@ -88,7 +90,10 @@ StatusPage ControlCommand::process() {
 
         if (event.type == Type::String) {
             if (key == "gcode") {
-                gcode_cmd = val.data();
+                const size_t copy_len = std::min(val.size(), sizeof(gcode_cmd_buf) - 1);
+                memcpy(gcode_cmd_buf, val.data(), copy_len);
+                gcode_cmd_buf[copy_len] = '\0';
+                gcode_cmd_set = true;
                 got_any_field = true;
             } else if (key == "dialog_response") {
                 const size_t copy_len = std::min(val.size(), sizeof(dialog_btn_buf) - 1);
@@ -217,7 +222,7 @@ StatusPage ControlCommand::process() {
     }
 
     // G-code passthrough
-    if (gcode_cmd) send_gcode(gcode_cmd);
+    if (gcode_cmd_set) send_gcode(gcode_cmd_buf);
 
     // Dialog response
     if (dialog_btn_set) dialog_response(dialog_btn_buf);
