@@ -609,7 +609,12 @@ void render_mesh_into_buf() {
 // ----------------------------------------------------------------------------
 
 constexpr size_t GCODE_LOG_LINES = 16;
-constexpr size_t GCODE_LOG_LINE_LEN = 96;
+// 256 fits the M115 FIRMWARE_NAME banner (~280 chars truncated to 255) and
+// long Marlin echo lines. entry.len is uint8_t so the cap is 255 chars + NUL.
+// Ring footprint: 16 * 256 = 4 KB static. Render path bounds per-frame
+// payload against MAX_FRAME_PAYLOAD, so larger entries just mean fewer
+// per frame, not overflow.
+constexpr size_t GCODE_LOG_LINE_LEN = 256;
 struct GcodeLogEntry {
     char data[GCODE_LOG_LINE_LEN];
     uint8_t len;
