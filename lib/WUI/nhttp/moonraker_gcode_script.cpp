@@ -3,6 +3,7 @@
 #include "json_parser.h"
 #include "static_mem.h"
 #include "status_page.h"
+#include "websocket_handler.h"
 
 #include <marlin_client.hpp>
 
@@ -44,6 +45,9 @@ namespace {
             ++start;
         }
         if (*start == '\0') {
+            return;
+        }
+        if (dispatch_klipper_command(start)) {
             return;
         }
         marlin_client::gcode(start);

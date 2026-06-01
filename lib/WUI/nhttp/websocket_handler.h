@@ -321,4 +321,11 @@ void publish_filelist_event(FilelistAction action, const char *path);
 // WS handlers drain on each poll-driven step(). Never blocks.
 void publish_gcode_response_line(const char *buf, int size);
 
+// Translates a Klipper-style command (SET_PIN, SET_HEATER_TEMPERATURE,
+// PAUSE/RESUME, etc.) sent by Fluidd's UI into the equivalent Marlin
+// gcode or marlin_client call. Returns true if the line was handled
+// (don't pass it to marlin_client::gcode); false if unrecognized
+// (caller should fall through to marlin_client::gcode as-is).
+bool dispatch_klipper_command(const char *line);
+
 } // namespace nhttp::printer
