@@ -1,5 +1,6 @@
 #include "req_parser.h"
 #include "handler.h"
+#include "moonraker_access.h"
 #include "server.h"
 #include <http/url_decode.h>
 #include <timing.h>
@@ -80,6 +81,9 @@ ExecutionControl RequestParser::event(Event event) {
         return ExecutionControl::Continue;
     case Names::MethodPut:
         method = Method::Put;
+        return ExecutionControl::Continue;
+    case Names::MethodOptions:
+        method = Method::Options;
         return ExecutionControl::Continue;
     case Names::MethodUnknown:
         method = Method::UnknownMethod;
@@ -204,6 +208,20 @@ ExecutionControl RequestParser::event(Event event) {
     case Names::ConnectionKeepAlive:
         connection = Connection::KeepAlive;
         break;
+    case Names::ConnectionUpgrade:
+        connection = Connection::Upgrade;
+        break;
+    case Names::UpgradeWebsocket:
+        upgrade_websocket = true;
+        break;
+    case Names::SecWebSocketKey:
+        if (sec_websocket_key_size < sec_websocket_key.size()) {
+            sec_websocket_key[sec_websocket_key_size++] = event.payload;
+        }
+        return ExecutionControl::Continue;
+    case Names::SecWebSocketVersion13:
+        sec_websocket_version_13 = true;
+        break;
     case Names::AcceptJson:
         accepts_json = true;
         break;
@@ -263,7 +281,15 @@ void RequestParser::step(const std::string_view &input, bool terminated_by_clien
 }
 
 bool RequestParser::can_keep_alive() const {
-    return (connection == Connection::KeepAlive) || (version_major == 1 && version_minor >= 1 && connection != Connection::Close);
+    return (connection == Connection::KeepAlive) || (version_major == 1 && version_minor >= 1 && connection != Connection::Close && connection != Connection::Upgrade);
+}
+
+bool RequestParser::is_websocket_upgrade() const {
+    return upgrade_websocket
+        && sec_websocket_version_13
+        && sec_websocket_key_size == SEC_WS_KEY_LEN
+        && connection == Connection::Upgrade
+        && method == http::Method::Get;
 }
 
 StatusPage::CloseHandling RequestParser::status_page_handling() const {
@@ -358,6 +384,33 @@ bool RequestParser::check_auth(const ApiKeyAuthParams &params, Step &out) const 
 }
 
 bool RequestParser::check_auth(Step &out) const {
+    // Moonraker-style access_token in the URL query string. Fluidd's
+    // HTTP calls don't send X-Api-Key but DO append ?access_token=<jwt>
+    // (or ?token=<jwt>) once the user has logged in via WS access.login.
+    // Match against the same predicate the WS handler uses
+    // (printer::access_token_valid) — accepts both the issued JWT and
+    // the raw API key. We check this BEFORE the per-scheme dispatch so
+    // it applies regardless of which auth_status the headers triggered.
+    const auto u = uri();
+    const auto qpos = u.find('?');
+    if (qpos != string_view::npos) {
+        const auto query = u.substr(qpos + 1);
+        const string_view names[] = { "access_token=", "token=" };
+        for (const auto &name : names) {
+            size_t pos = 0;
+            while ((pos = query.find(name, pos)) != string_view::npos) {
+                if (pos == 0 || query[pos - 1] == '&') {
+                    const auto vstart = pos + name.size();
+                    auto vend = query.find('&', vstart);
+                    if (vend == string_view::npos) vend = query.size();
+                    if (printer::access_token_valid(query.substr(vstart, vend - vstart))) {
+                        return true;
+                    }
+                }
+                pos += name.size();
+            }
+        }
+    }
     return std::visit([&](auto &params) { return check_auth(params, out); }, auth_status);
 }
 

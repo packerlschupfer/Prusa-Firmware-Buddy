@@ -1,6 +1,7 @@
 #include "nhttp/server.h"
 #include "nhttp/common_selectors.h"
 #include "link_content/static_file.h"
+#include "link_content/moonraker_api.h"
 #include "link_content/prusa_link_api_octo.h"
 #include "link_content/prusa_link_api_v1.h"
 #include "link_content/usb_files.h"
@@ -29,6 +30,7 @@ class DefaultServerDefs final : public ServerDefs {
 private:
     static const constexpr handler::Selector *const selectors_array[] = {
         &validate_request,
+        &moonraker_api,
         &prusa_link_api_v1,
         &prusa_link_api_octo,
         &usb_files,

@@ -2,6 +2,7 @@
 
 #include "app_metrics.h"
 #include <logging/log.hpp>
+#include <nhttp/websocket_handler.h>
 #include "cmsis_os.h"
 #include "config.h"
 #include "adc.hpp"
@@ -94,6 +95,12 @@ METRIC_DEF(metric_maintask_event, "maintask_loop", METRIC_VALUE_EVENT, 0, METRIC
 METRIC_DEF(metric_cpu_usage, "cpu_usage", METRIC_VALUE_INTEGER, 1000, METRIC_ENABLED);
 
 void app_marlin_serial_output_write_hook(const uint8_t *buffer, int size) {
+    // NOTE: this lineBufferHook is overwritten later by serial_log.cpp's
+    // serial_log_install_hook(), so in practice this function never runs
+    // in production. The WS notify_gcode_response tap lives in serial_log's
+    // on_serial_line() callback instead. Left in place because Marlin
+    // upstream may add new logging needs that re-attach here.
+
     if (SerialLoggingDisabler::is_logging_disabled()) {
         return;
     }

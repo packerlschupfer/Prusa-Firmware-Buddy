@@ -153,8 +153,27 @@ private:
 
     // TODO: Tune the values.
     static const size_t ACTIVE_CONNS = 3;
-    static const size_t BUFF_SIZE = TCP_MSS;
-    static const size_t BUFF_CNT = 2;
+    // BUFF_SIZE was TCP_MSS (=1024 in our lwIP config). That capped
+    // single WS frames at ~1020 bytes which broke the moment we wanted
+    // to push more than the core printer state in one frame (chamber
+    // fans + LED in phase 4zd silently exceeded it and silenced the WS).
+    // lwIP segments large writes across multiple TCP packets internally,
+    // so the buffer can be larger than MSS without breaking the wire
+    // protocol — we just hold more data ready before altcp_write. Going
+    // to 2048 costs BUFF_CNT × 1024 = 6 KB extra .bss on an STM32F427
+    // with 192 KB SRAM. Cheap; lifts the cap on what one WS frame can
+    // contain to ~2030 bytes.
+    static const size_t BUFF_SIZE = 2 * TCP_MSS;
+    // BUFF_CNT was 2 — too small for the Moonraker WS pushes
+    // (gcode_response storms during G29, status_update at ~4 Hz,
+    // proc_stat at 0.5 Hz, multi-frame mesh, filelist notifications).
+    // With 2 buffers shared across 3 connections, heavy push traffic
+    // monopolized the pool, starved Fluidd's keep-alive ping, and
+    // triggered "Reconnecting" popups. The diagnostic counter
+    // buffer_starvations confirmed this. Bumping to 6 (one available
+    // per connection + headroom) costs 4 × 1024 = 4 KB extra .bss on
+    // an STM32F427 with 192 KB SRAM. Memory cheap; jitter expensive.
+    static const size_t BUFF_CNT = 6;
     // half-seconds... weird units of LwIP
     static const uint8_t POLL_TIME = 1;
     // Idle connections time out after 60 seconds.
@@ -439,5 +458,18 @@ public:
 
     void inject_transfer(altcp_pcb *conn, pbuf *data, uint16_t data_offset, splice::Transfer *transfer, size_t expected_data);
 };
+
+// Lightweight runtime telemetry for diagnosing network stack hangs.
+// Counters are incremented from server.cpp's write path; readers
+// (e.g. printer.network.stats WS RPC) just sample these atomics.
+struct NetworkStats {
+    uint32_t altcp_write_failures = 0;  // altcp_write returned non-ERR_OK
+    uint32_t buffer_starvations = 0;    // step() returned data but no out buffer available
+    uint32_t send_space_zero = 0;       // queue_size == 0 when we had a write opportunity
+    uint32_t connection_aborts = 0;     // hard-aborted (vs graceful close)
+    uint32_t lwip_err_callbacks = 0;    // lost_conn_wrap fired (TCP abort/reset/timeout from lwIP)
+    int32_t last_lwip_err = 0;          // err_t passed to most recent altcp_err callback
+};
+NetworkStats get_network_stats();
 
 } // namespace nhttp

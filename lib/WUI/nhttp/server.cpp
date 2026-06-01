@@ -2,11 +2,35 @@
 #include "splice.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <lwip/sys.h>
 #include <lwip/tcpip.h>
 
 namespace nhttp {
+
+namespace {
+// Atomic counters for diagnosing the network-death issue. Single-thread
+// (tcpip) writes, multi-thread reads OK without barriers since these are
+// debug counters (transient mis-reads are acceptable).
+std::atomic<uint32_t> g_altcp_write_failures { 0 };
+std::atomic<uint32_t> g_buffer_starvations { 0 };
+std::atomic<uint32_t> g_send_space_zero { 0 };
+std::atomic<uint32_t> g_connection_aborts { 0 };
+std::atomic<uint32_t> g_lwip_err_callbacks { 0 };
+std::atomic<int32_t> g_last_lwip_err { 0 };
+} // namespace
+
+NetworkStats get_network_stats() {
+    NetworkStats s;
+    s.altcp_write_failures = g_altcp_write_failures.load(std::memory_order_relaxed);
+    s.buffer_starvations = g_buffer_starvations.load(std::memory_order_relaxed);
+    s.send_space_zero = g_send_space_zero.load(std::memory_order_relaxed);
+    s.connection_aborts = g_connection_aborts.load(std::memory_order_relaxed);
+    s.lwip_err_callbacks = g_lwip_err_callbacks.load(std::memory_order_relaxed);
+    s.last_lwip_err = g_last_lwip_err.load(std::memory_order_relaxed);
+    return s;
+}
 
 using handler::ConnectionState;
 using handler::Done;
@@ -238,6 +262,7 @@ bool Server::ConnectionSlot::step() {
         if (buffer) {
             release();
             remove_callbacks(conn);
+            g_connection_aborts.fetch_add(1, std::memory_order_relaxed);
             altcp_abort(conn);
             return true;
         }
@@ -261,12 +286,26 @@ bool Server::ConnectionSlot::step() {
          */
         assert(buffer->write_pos <= buffer->write_len);
         const auto to_send = std::min(static_cast<uint16_t>(buffer->write_len - buffer->write_pos), send_space());
-        if (to_send > 0 && altcp_write(conn, buffer->data.begin() + buffer->write_pos, to_send, 0) == ERR_OK) {
-            buffer->write_pos += to_send;
-            altcp_output(conn);
-            server->activity(conn, this);
-            return true;
-        } else {
+        if (to_send > 0) {
+            const err_t wr_err = altcp_write(conn, buffer->data.begin() + buffer->write_pos, to_send, 0);
+            if (wr_err == ERR_OK) {
+                buffer->write_pos += to_send;
+                altcp_output(conn);
+                server->activity(conn, this);
+                return true;
+            }
+            // Non-OK return — typically ERR_MEM when the send buffer is
+            // full. Caller still retries on next poll (data stays in
+            // buffer at write_pos), so this isn't a data-loss path, but
+            // it IS a sign of TCP congestion. Tracking it is the main
+            // diagnostic signal for the periodic network-death issue.
+            g_altcp_write_failures.fetch_add(1, std::memory_order_relaxed);
+        } else if (buffer->write_len > buffer->write_pos) {
+            // We had data queued but TCP send space is 0. Different
+            // signal from a write failure — client is behind on ACKs.
+            g_send_space_zero.fetch_add(1, std::memory_order_relaxed);
+        }
+        {
             /*
              * Couldn't send more (no space? Nothing to send?), but we are
              * still waiting for some acks. Keep waiting, don't do anything
@@ -312,6 +351,14 @@ bool Server::ConnectionSlot::step() {
     if (wr) {
         const uint16_t queue_size = send_space();
         Buffer *empty = server->find_empty_buffer();
+        if (!empty) {
+            // Handler wants to write but no output buffer was free.
+            // With only BUFF_CNT=2 buffers shared across ACTIVE_CONNS=3,
+            // this is the most likely culprit for the network-death
+            // pattern: WS push paths grab both buffers and starve other
+            // connections (or even themselves) of send capacity.
+            g_buffer_starvations.fetch_add(1, std::memory_order_relaxed);
+        }
 
         if (queue_size > 0 && empty) {
             buffer = empty;
@@ -448,7 +495,9 @@ void Server::remove_callbacks(altcp_pcb *conn) {
     altcp_arg(conn, nullptr);
 }
 
-void Server::lost_conn_wrap(void *slot, err_t) {
+void Server::lost_conn_wrap(void *slot, err_t err) {
+    g_lwip_err_callbacks.fetch_add(1, std::memory_order_relaxed);
+    g_last_lwip_err.store(static_cast<int32_t>(err), std::memory_order_relaxed);
     if (is_active_slot(slot)) {
         static_cast<Slot *>(slot)->release();
     }
@@ -476,6 +525,17 @@ err_t Server::idle_conn_wrap(void *slot, altcp_pcb *conn) {
             // activity was marked) or we have something still sitting in the
             // queue without a space in the USB.
             return ERR_OK;
+        }
+    }
+    // For long-lived handlers that push periodic notifications
+    // (WebSocket), forward_progress the connection on every poll so they
+    // get a chance to emit push frames even with no client traffic. The
+    // handler's own want_write() time-gates whether anything actually
+    // goes out.
+    if (s->get_slot_type() == BaseSlot::SlotType::ConnectionSlot) {
+        ConnectionSlot *cs = static_cast<ConnectionSlot *>(slot);
+        if (std::holds_alternative<printer::WebSocketHandler>(cs->state)) {
+            cs->forward_progress();
         }
     }
     s->timeout.poll_inactivity();
@@ -516,6 +576,7 @@ err_t Server::idle_conn_wrap(void *slot, altcp_pcb *conn) {
          * to something else.
          */
         if (has_unacked_data || altcp_close(conn) != ERR_OK) {
+            g_connection_aborts.fetch_add(1, std::memory_order_relaxed);
             altcp_abort(conn);
             return ERR_ABRT;
         }
@@ -536,7 +597,8 @@ err_t Server::received_wrap(void *raw_slot, struct altcp_pcb *conn, pbuf *data, 
             if (altcp_close(conn) == ERR_OK) {
                 return ERR_OK;
             } else {
-                altcp_abort(conn);
+                g_connection_aborts.fetch_add(1, std::memory_order_relaxed);
+            altcp_abort(conn);
                 return ERR_ABRT;
             }
         }
@@ -770,6 +832,7 @@ bool Server::TransferSlot::step() {
         // (conn may be null by make_response right now, in which case we
         // already transferred the ownership)
         if (!res.has_value() && conn != nullptr && !close()) {
+            g_connection_aborts.fetch_add(1, std::memory_order_relaxed);
             altcp_abort(conn);
             release();
         }

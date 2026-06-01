@@ -96,6 +96,24 @@ size_t write_headers(uint8_t *buffer, size_t buffer_len, Status status, ContentT
         pos += copy;
     }
 
+    // CORS — emit on every response so browsers can cross-origin
+    // fetch our API from Fluidd-style SPAs served from another host.
+    // `*` matches Moonraker's default `cors_domains:[*]`. Allow-Headers
+    // covers the JSON content-type preflight + the X-Api-Key /
+    // Authorization auth headers. Credentials:true lets Fluidd send
+    // cookies/auth if it ever does (currently doesn't, but harmless).
+    static constexpr char cors_headers[] =
+        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Methods: GET, POST, OPTIONS, DELETE, PUT\r\n"
+        "Access-Control-Allow-Headers: Content-Type, X-Api-Key, Authorization\r\n"
+        "Access-Control-Max-Age: 86400\r\n";
+    {
+        const size_t cors_len = sizeof(cors_headers) - 1;
+        const size_t copy = std::min(buffer_len - pos, cors_len);
+        memcpy(buf + pos, cors_headers, copy);
+        pos += copy;
+    }
+
     // That 2 fits, reserved at the top of the function.
     memcpy(buf + pos, "\r\n", 2);
     pos += 2;

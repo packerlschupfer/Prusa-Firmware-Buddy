@@ -10,6 +10,7 @@
 
 #include <automata/core.h>
 
+#include <array>
 #include <cstdlib>
 #include <cstdint>
 
@@ -84,6 +85,7 @@ private:
         Unknown,
         KeepAlive,
         Close,
+        Upgrade,
     };
     Connection connection : 2;
 
@@ -93,6 +95,19 @@ public:
     bool print_after_upload : 1;
     bool overwrite_file : 1;
     bool create_folder : 1;
+
+    // WebSocket upgrade tracking (RFC 6455).
+    // `upgrade_websocket` set when the Upgrade: websocket header is seen.
+    // `sec_websocket_key` accumulates the 24-character base64 client key.
+    // `sec_websocket_version_13` set when Sec-WebSocket-Version: 13 is seen.
+    bool upgrade_websocket : 1 = false;
+    bool sec_websocket_version_13 : 1 = false;
+    static constexpr size_t SEC_WS_KEY_LEN = 24;
+    std::array<char, SEC_WS_KEY_LEN> sec_websocket_key {};
+    uint8_t sec_websocket_key_size = 0;
+    // Validates: client wants ws upgrade AND key has the right shape AND
+    // protocol version 13 was seen AND Connection: upgrade was set.
+    bool is_websocket_upgrade() const;
 
 private:
     struct DigestAuthParams {
