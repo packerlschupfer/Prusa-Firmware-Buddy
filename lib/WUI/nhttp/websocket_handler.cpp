@@ -608,12 +608,19 @@ void render_mesh_into_buf() {
 // poll-driven step() when there are new entries.
 // ----------------------------------------------------------------------------
 
+// 16 entries × 256 bytes = 4 KB static. Tested-stable on Buddy STM32F427.
+// 2026-06-02: tried 32 (8 KB) and 64 (16 KB) — both ran the firmware
+// out of FreeRTOS heap (configTOTAL_HEAP_SIZE = 40 KB) on boot. The
+// safe-static-add headroom on this firmware is between 4 KB and 8 KB,
+// so the ring stays at 16. M115 emits ~20 lines so the FIRMWARE_NAME
+// banner can be displaced by Cap: lines before the WS push drains it;
+// the full banner is also exposed via /server/info HTTP, so the
+// cosmetic loss in the console is accepted. See [[feedback_buddy_internals]].
 constexpr size_t GCODE_LOG_LINES = 16;
 // 256 fits the M115 FIRMWARE_NAME banner (~280 chars truncated to 255) and
 // long Marlin echo lines. entry.len is uint8_t so the cap is 255 chars + NUL.
-// Ring footprint: 16 * 256 = 4 KB static. Render path bounds per-frame
-// payload against MAX_FRAME_PAYLOAD, so larger entries just mean fewer
-// per frame, not overflow.
+// Render path bounds per-frame payload against MAX_FRAME_PAYLOAD, so larger
+// entries just mean fewer per frame, not overflow.
 constexpr size_t GCODE_LOG_LINE_LEN = 256;
 struct GcodeLogEntry {
     char data[GCODE_LOG_LINE_LEN];
