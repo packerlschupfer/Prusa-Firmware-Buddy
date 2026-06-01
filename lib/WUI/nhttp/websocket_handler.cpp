@@ -623,6 +623,10 @@ std::atomic<uint32_t> g_gcode_log_write_idx { 0 };
 
 } // namespace
 
+bool dispatch_klipper_command(const char *line) {
+    return try_dispatch_klipper_command(line);
+}
+
 void publish_gcode_response_line(const char *buf, int size) {
     if (size <= 0 || !buf) return;
     // Strip trailing newlines/CR (Fluidd's console renders one line per
