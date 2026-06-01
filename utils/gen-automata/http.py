@@ -15,6 +15,7 @@ def methods():
         "PUT": "MethodPut",
         "DELETE": "MethodDelete",
         "HEAD": "MethodHead",
+        "OPTIONS": "MethodOptions",
     }
     return keywords(methods,
                     "HorizWhitespace",
@@ -271,6 +272,17 @@ def upgrade_header():
     return keyworded_header({
         'websocket': 'UpgradeWebsocket',
     }, 'UpgradeHeader')
+
+
+def ws_version_header():
+    """
+    Parse Sec-WebSocket-Version header.
+
+    Only "13" (the only RFC 6455 version) is recognized.
+    """
+    return keyworded_header({
+        '13': 'SecWebSocketVersion13',
+    }, 'SecWebSocketVersionHeader')
 
 
 def ws_protocol_header():

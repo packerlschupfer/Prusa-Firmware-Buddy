@@ -1,4 +1,5 @@
 #include "serial_log.h"
+#include "nhttp/websocket_handler.h"
 
 #include <USBSerial.h>
 #include <freertos/mutex.hpp>
@@ -48,9 +49,16 @@ namespace {
         if (len <= 0 || !buf) {
             return;
         }
-        std::lock_guard lock { ring_mutex() };
-        append_locked(buf, static_cast<size_t>(len));
-        total_written.fetch_add(static_cast<uint32_t>(len), std::memory_order_relaxed);
+        {
+            std::lock_guard lock { ring_mutex() };
+            append_locked(buf, static_cast<size_t>(len));
+            total_written.fetch_add(static_cast<uint32_t>(len), std::memory_order_relaxed);
+        }
+        // Also tee the line to the WS notify_gcode_response ring so Fluidd's
+        // console echoes Marlin output. This hook is the ONLY consumer of the
+        // serial line buffer (it overrides appmain's tap), so we have to
+        // forward here ourselves.
+        publish_gcode_response_line(reinterpret_cast<const char *>(buf), len);
     }
 } // namespace
 

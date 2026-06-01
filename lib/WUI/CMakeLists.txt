@@ -7,6 +7,7 @@ target_sources(
             ethernetif.cpp
             http_lifetime.cpp
             link_content/basic_gets.cpp
+            link_content/moonraker_api.cpp
             link_content/previews.cpp
             link_content/prusa_api_helpers.cpp
             link_content/prusa_link_api_octo.cpp
@@ -25,6 +26,13 @@ target_sources(
             nhttp/job_command.cpp
             nhttp/job_command_marlin.cpp
             nhttp/control_command.cpp
+            nhttp/moonraker_access.cpp
+            nhttp/moonraker_file_delete.cpp
+            nhttp/moonraker_file_upload.cpp
+            nhttp/moonraker_files_list.cpp
+            nhttp/moonraker_gcode_script.cpp
+            nhttp/moonraker_print_start.cpp
+            nhttp/websocket_handler.cpp
             nhttp/control_command_marlin.cpp
             nhttp/req_parser.cpp
             nhttp/send_file.cpp

@@ -34,6 +34,13 @@
 #include "gcode_preview.h"
 #include "job_command.h"
 #include "control_command.h"
+#include "moonraker_access.h"
+#include "moonraker_file_delete.h"
+#include "moonraker_file_upload.h"
+#include "moonraker_files_list.h"
+#include "moonraker_gcode_script.h"
+#include "moonraker_print_start.h"
+#include "websocket_handler.h"
 #include "req_parser.h"
 #include "send_file.h"
 #include "send_json.h"
@@ -149,10 +156,17 @@ namespace handler {
         SendJson<EmptyRenderer>,
         SendJson<TransferRenderer>,
         SendJson<StatusRenderer>,
+        SendJson<printer::MoonrakerFilesList>,
         printer::GcodeUpload,
         printer::GCodePreview,
         printer::JobCommand,
         printer::ControlCommand,
+        printer::MoonrakerAccessAuth,
+        printer::MoonrakerFileDelete,
+        printer::MoonrakerFileUpload,
+        printer::MoonrakerGcodeScript,
+        printer::MoonrakerPrintStart,
+        printer::WebSocketHandler,
         printer::FileInfo,
         printer::FileCommand,
 #if NETWORKING_BENCHMARK_ENABLED

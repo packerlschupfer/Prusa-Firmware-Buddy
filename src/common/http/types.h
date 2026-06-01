@@ -14,6 +14,7 @@ enum Method {
     Put,
     Delete,
     Connect,
+    Options,
     UnknownMethod,
 };
 
@@ -31,6 +32,8 @@ constexpr const char *to_str(Method method) {
         return "DELETE";
     case Connect:
         return "CONNECT";
+    case Options:
+        return "OPTIONS";
     default:
         assert(0);
     case UnknownMethod:
