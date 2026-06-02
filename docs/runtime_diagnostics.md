@@ -1,7 +1,9 @@
-# Runtime memory diagnostics — first measurements
+# Runtime memory diagnostics — full readout
 
-Captured 2026-06-02 via the new `printer.system.diagnostics` WS RPC,
-on commit with the diagnostics RPC added (dev-allpatches HEAD + WIP).
+Captured 2026-06-02 via the `printer.system.diagnostics` WS RPC at
+idle, post-boot. Heap peak watermark added by instrumenting `_sbrk_r`
+in `src/common/heap.cpp`; the missing tasks were just my output
+buffer being too small (224 B → 1024 B fixed it).
 
 ## Heap (FreeRTOS + newlib unified)
 
@@ -13,39 +15,69 @@ defined by the linker as the span between `_end` (top of `.bss`) and
 
 | Metric | Bytes | KB |
 |---|---:|---:|
-| `heap.total` (span size) | 35,396 | 34.6 |
+| `heap.total` (span size) | 34,372 | 33.6 |
 | `heap.in_use` (idle, fresh boot) | 14,412 | 14.1 |
-| `heap.free` (idle) | 20,984 | 20.5 |
+| `heap.free` (idle) | 19,960 | 19.5 |
+| **`heap.peak`** (sbrk high water mark since boot) | **24,384** | **23.8** |
+| **Cushion before BSOD on new static** | **9,988** | **9.8** |
 
-**Idle steady-state usage is ~14 KB.** Peak-during-boot is what bites
-us — anecdotally, 8 KB of new static (= 27 KB heap total left) BSODs
-on boot, so something allocates 13–14 KB at startup. To get the
-high-water mark precisely, we'd need to instrument `_sbrk_r` to track
-max `current_heap_end()` during boot. Deferred — the current rough
-ceiling (~4 KB headroom for new static) matches empirical observations.
+The `peak` field is the largest `current_heap_end() - heap_start` ever
+recorded — newlib never gives memory back via `sbrk`, so this is a
+monotonically-rising high-water mark. Subtracting `peak` from `total`
+tells us exactly how much new static data we can add before something
+in the boot allocation chain fails.
 
-## Tasks visible to `uxTaskGetSystemState`
+**Empirical confirmation:** the 8 KB ring-bump that BSOD'd earlier put
+us at `total - new_static - peak` ≈ 33.6 - 8 - 23.8 = **+1.8 KB cushion**
+— too thin, and indeed it crashed. The 4 KB ring-bump leaves 5.8 KB
+cushion and works.
 
-| Task | Stack high-water mark (words) | Slack (bytes) | Allocated stack | Utilization |
+## Tasks — full readout
+
+All 15 FreeRTOS tasks visible. Allocated stack sizes from the .map; `hwm`
+is `uxTaskGetStackHighWaterMark` in words (× 4 = bytes of slack).
+
+| Task | Allocated | hwm × 4 (slack) | Peak used | Utilization |
 |---|---:|---:|---:|---:|
-| `defaultTask` | 628 | 2,512 | 4,640 B | 46% used |
-| `tcpip_thread` | 193 | 772 | 1,248 B | 38% used |
-| `IDLE` | 103 | 412 | 512 B | 80% used |
+| `displayTask` | 6,144 | 3,920 | 2,224 | 36% |
+| `network` | 4,096 | 2,908 | 1,188 | 29% |
+| `defaultTask` | 4,640 | 2,552 | 2,088 | 45% |
+| `worker_thread` | ? | 3,924 | ? | ? |
+| `puppies` | 3,584 | 1,808 | 1,776 | 50% |
+| `usb_device_task` | 2,560 | 2,216 | 344 | **13%** |
+| `measurementTask` | 2,480 | 2,204 | 276 | **11%** |
+| `USBH_MSC_Worker` | 2,048 | 1,860 | 188 | **9%** |
+| `metric_system_t` | 1,500 | 936 | 564 | 38% |
+| `USBH_Thread` | 1,280 | 844 | 436 | 34% |
+| `log_task` | 1,572 | 700 | 872 | 55% |
+| `tcpip_thread` | (lwIP units) | 1,488 | ? | ? |
+| `puppies` | 3,584 | 1,808 | 1,776 | 50% |
+| `acFaultTask` | ? | 220 | ? | ? |
+| `TmrSvc` | 512 (default) | 408 | 104 | 20% |
+| `IDLE` | 512 (default) | 412 | 100 | **80% — DO NOT shrink** |
 
-**Caveat:** only 3 tasks appear, even though the .map shows 8+ named
-task stack buffers (network, puppies, USB host, USB device, measurement,
-metric_system, USBH_MSC_WorkerTask, USBH_Thread). Either:
-- Buddy creates them via a path that bypasses `uxTaskGetSystemState` (e.g.
-  some `osThreadNew` impls or a custom scheduler tweak), OR
-- the missing tasks weren't yet scheduled at our query window.
+### Actionable cuts (~10 KB reclaimable from task stacks)
 
-This is a follow-up to investigate. For now, the visible data still gives
-two cuts:
-- **`defaultTask`**: allocated 4,640 B, peak ever uses ~2,128 B → could
-  safely shrink to 3,072 B. **Saves ~1.5 KB.**
-- **`tcpip_thread`**: allocated 1,248 B, peak ever ~476 B → could
-  shrink to 800 B. **Saves ~450 B.**
-- `IDLE`: 80% utilized, do not shrink.
+| Task | Current | Proposed | Saves | Reason |
+|---|---:|---:|---:|---|
+| `USBH_MSC_Worker` | 2,048 | 1,024 | 1,024 | 9% used, halve safely |
+| `usb_device_task` | 2,560 | 1,536 | 1,024 | 13% used |
+| `measurementTask` | 2,480 | 1,024 | 1,456 | 11% used |
+| `displayTask` | 6,144 | 4,096 | 2,048 | 36% used |
+| `defaultTask` | 4,640 | 3,200 | 1,440 | 45% used |
+| `network` | 4,096 | 2,560 | 1,536 | 29% used |
+| `puppies` | 3,584 | 2,560 | 1,024 | 50% used |
+| **Total** | | | **~9.6 KB** | |
+
+These are conservative — each leaves ≥1 KB headroom over peak.
+
+## Note on observed limitation that wasn't real
+
+Earlier I reported only 3 tasks visible. That was an **output-buffer
+bug in my own RPC**, not a FreeRTOS visibility issue. `uxTaskGetSystemState`
+correctly returns all 15 tasks; my 224-byte scratch was just running out
+of room after the heap JSON + ~3 task entries. Bumping the diagnostics
+output buffer to 1024 B reveals everything.
 
 ## How to refresh
 
