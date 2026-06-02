@@ -62,7 +62,8 @@ extern "C" {
 #define DEFAULT_ACCEPTMBOX_SIZE   TCPIP_MBOX_SIZE
 #define RECV_BUFSIZE_DEFAULT      2000000000
 #define LWIP_HTTPD                0
-#define LWIP_STATS                0
+#define LWIP_STATS                1
+#define LWIP_STATS_DISPLAY        1
 #define CHECKSUM_GEN_IP           1
 #define CHECKSUM_GEN_UDP          1
 #define CHECKSUM_GEN_TCP          1

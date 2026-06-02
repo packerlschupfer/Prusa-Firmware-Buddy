@@ -171,14 +171,51 @@ After flashing a firmware that has the diagnostics RPC:
 
 The response is one JSON object with `heap` and `tasks` keys.
 
-## Follow-ups (not done in this pass)
+## lwIP memp pool stats (CCMRAM picture closed)
 
-1. **lwIP `memp_stats`** — would need `MEMP_STATS=1` in `lwipopts.h`
-   plus an iterator over `memp_pools[]`. Tells us if `MEMP_NUM_TCP_PCB=12`
-   is over-provisioned. Likely savings: 1–2 KB in CCMRAM.
-2. **`_sbrk` peak watermark** — instrument `_sbrk_r` in `src/common/heap.cpp`
-   to record max `current_heap_end()`. Tells us exact peak heap-in-use
-   during boot + any G29 / print / firmware-update.
-3. **Full task list** — figure out why `osThreadNew`-created tasks
-   don't appear in `uxTaskGetSystemState`, or use `vTaskList()` for
-   a text dump.
+Enabled `LWIP_STATS = 1` and `LWIP_STATS_DISPLAY = 1` in
+`include/buddy/lwipopts.h` (dev-allpatches only — the RPC code gates it
+behind `#if LWIP_STATS && MEMP_STATS`, so it's a no-op when off, which
+remains the upstream default). All 19 lwIP memp pools captured:
+
+| Pool | Avail | Max ever | Saturation | Notes |
+|---|---:|---:|---:|---|
+| `RAW_PCB` | 4 | 0 | 0% | unused (no raw IP sockets) |
+| `UDP_PCB` | 5 | 4 | **80%** | near capacity — DHCP + mDNS + Prusa-Link |
+| `TCP_PCB` | 12 | 2 | 16% | could cut to 4 |
+| `TCP_PCB_LISTEN` | 8 | 1 | 12% | over-provisioned |
+| `TCP_SEG` | 16 | 2 | 12% | over-provisioned |
+| `REASSDATA` | 5 | 0 | 0% | IP frag reassembly unused |
+| `FRAG_PBUF` | 15 | 0 | 0% | IP frag pbufs unused |
+| `NETBUF` | 2 | 0 | 0% | netconn unused |
+| `NETCONN` | 4 | 0 | 0% | netconn unused |
+| `TCPIP_MSG_API` | 8 | 2 | 25% | adequate |
+| `TCPIP_MSG_INPKT` | 30 | 2 | 6% | hugely over-provisioned |
+| `IGMP_GROUP` | 8 | 2 | 25% | mDNS multicast |
+| `SYS_TIMEOUT` | 16 | 11 | 68% | adequate |
+| `NETDB` | 1 | 0 | 0% | DNS lookups unused |
+| `PBUF_REF/ROM` | 16 | 2 | 12% | over-provisioned |
+| `PBUF_POOL` | 0 | 0 | n/a | disabled (Buddy uses custom pbuf alloc) |
+| `MALLOC_128` | 7 | 3 | 42% | adequate |
+| `MALLOC_512` | 2 | 1 | 50% | adequate |
+| `MALLOC_1512` | 1 | 1 | **100%** | exactly at capacity, no slack |
+
+**`err = 0` across every pool** — no allocation failures under real
+traffic. Nothing is currently under-provisioned.
+
+If we cut every over-provisioned pool to `max × 2`, conservative CCMRAM
+reclaim is ~3-4 KB. But CCMRAM is a separate region from the main RAM
+where our heap pressure lives, so this is *information* rather than
+*action* — the data is now on file in case it ever becomes useful.
+
+**Watch-list:** `MALLOC_1512` at 1/1 is the tightest pool. Any future
+feature needing a second 1.5 KB lwIP alloc would fail; raise
+`MEMP_NUM_MEM_1512` in `lwipopts.h` first if you ever add one.
+
+## Follow-ups (still on the shelf)
+
+1. **(done)** ~~lwIP `memp_stats`~~ — captured above.
+2. **(done)** ~~`_sbrk` peak watermark~~ — instrumented; `heap.peak` field
+   in the diagnostics RPC.
+3. **(done)** ~~Full task list~~ — was a 224-byte output buffer bug, not
+   a FreeRTOS visibility issue. Now all 15 tasks visible.
