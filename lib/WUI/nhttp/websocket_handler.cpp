@@ -87,7 +87,21 @@ constexpr GcodeMacro kMacros[] = {
     { "PREHEAT_ABS", "M104 S255\nM140 S100" },
     { "COOL_DOWN", "M104 S0\nM140 S0\nM107" },
     { "HOME_ALL", "G28" },
+    { "HOME_X", "G28 X" },
+    { "HOME_Y", "G28 Y" },
+    { "HOME_Z", "G28 Z" },
     { "MOTORS_OFF", "M84" },
+    // Filament workflow — Marlin M701/M702/M600 are the equivalents.
+    // M701/M702 will prompt the LCD ("insert filament", "ready when
+    // ready") and return when the user confirms or the bowden is
+    // sensed; Fluidd surfaces those as host-prompt dialogs.
+    { "LOAD_FILAMENT", "M701" },
+    { "UNLOAD_FILAMENT", "M702" },
+    { "CHANGE_FILAMENT", "M600" },
+    // LIGHTS_ON / LIGHTS_OFF expand to SET_PIN which try_dispatch_klipper_command
+    // intercepts and writes to the side-strip directly (no marlin gcode round-trip).
+    { "LIGHTS_ON", "SET_PIN PIN=chamber_led VALUE=1" },
+    { "LIGHTS_OFF", "SET_PIN PIN=chamber_led VALUE=0" },
     // Klipper-named macros emitted by Fluidd UI buttons. Map to the
     // Marlin equivalents so the existing Bed Mesh card works.
     //
@@ -99,6 +113,7 @@ constexpr GcodeMacro kMacros[] = {
     { "BED_MESH_CALIBRATE", "G29 P1\nG29 P3 R 999\nG29 S0" },
     { "BED_MESH_CLEAR", "M420 S0" },
     { "QUERY_ENDSTOPS", "M119" },
+    { "GET_POSITION", "M114" },
 };
 
 // Best-effort dispatcher for Klipper-style commands Fluidd / OrcaSlicer
@@ -1119,11 +1134,26 @@ size_t WebSocketHandler::render_database_get_item(int id, const char *key) {
                 "{\"name\":\"PREHEAT_ABS\",\"visible\":true,\"categoryId\":\"heating\"},"
                 "{\"name\":\"COOL_DOWN\",\"visible\":true,\"categoryId\":\"heating\"},"
                 "{\"name\":\"HOME_ALL\",\"visible\":true,\"categoryId\":\"motion\"},"
-                "{\"name\":\"MOTORS_OFF\",\"visible\":true,\"categoryId\":\"motion\"}"
+                "{\"name\":\"HOME_X\",\"visible\":true,\"categoryId\":\"motion\"},"
+                "{\"name\":\"HOME_Y\",\"visible\":true,\"categoryId\":\"motion\"},"
+                "{\"name\":\"HOME_Z\",\"visible\":true,\"categoryId\":\"motion\"},"
+                "{\"name\":\"MOTORS_OFF\",\"visible\":true,\"categoryId\":\"motion\"},"
+                "{\"name\":\"LOAD_FILAMENT\",\"visible\":true,\"categoryId\":\"filament\"},"
+                "{\"name\":\"UNLOAD_FILAMENT\",\"visible\":true,\"categoryId\":\"filament\"},"
+                "{\"name\":\"CHANGE_FILAMENT\",\"visible\":true,\"categoryId\":\"filament\"},"
+                "{\"name\":\"LIGHTS_ON\",\"visible\":true,\"categoryId\":\"misc\"},"
+                "{\"name\":\"LIGHTS_OFF\",\"visible\":true,\"categoryId\":\"misc\"},"
+                "{\"name\":\"BED_MESH_CALIBRATE\",\"visible\":true,\"categoryId\":\"calibration\"},"
+                "{\"name\":\"BED_MESH_CLEAR\",\"visible\":true,\"categoryId\":\"calibration\"},"
+                "{\"name\":\"QUERY_ENDSTOPS\",\"visible\":true,\"categoryId\":\"misc\"},"
+                "{\"name\":\"GET_POSITION\",\"visible\":true,\"categoryId\":\"misc\"}"
             "],\"categories\":["
                 "{\"id\":\"heating\",\"name\":\"Heating\"},"
-                "{\"id\":\"motion\",\"name\":\"Motion\"}"
-            "],\"expanded\":[\"heating\",\"motion\"]}";
+                "{\"id\":\"motion\",\"name\":\"Motion\"},"
+                "{\"id\":\"filament\",\"name\":\"Filament\"},"
+                "{\"id\":\"calibration\",\"name\":\"Calibration\"},"
+                "{\"id\":\"misc\",\"name\":\"Misc\"}"
+            "],\"expanded\":[\"heating\",\"motion\",\"filament\",\"calibration\",\"misc\"]}";
         constexpr size_t default_len = sizeof(kMacrosDefault) - 1;
         if (static_cast<size_t>(prelude) + default_len + 4 < cap) {
             std::memcpy(buf_start + prelude, kMacrosDefault, default_len);
