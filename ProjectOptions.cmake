@@ -183,10 +183,15 @@ list(REMOVE_ITEM MCU_VALID_OPTS "<default>")
 define_enum_option(NAME MCU VALUE ${MCU} ALL_VALUES ${MCU_VALID_OPTS})
 
 # Set connect status/availability
+# dev-allpatches: Core One+ runs Fluidd/Moonraker locally, so Prusa Connect
+# (the cloud client) is redundant. Default it OFF for COREONE to reclaim the
+# task stack + protocol + TLS state — ~10 KB of RAM and tens of KB of flash.
+# Pass -D CONNECT=YES on the cmake command line if you want it back.
 if(${BOARD} STREQUAL "DWARF"
    OR ${BOARD} STREQUAL "MODULARBED"
    OR ${BOARD} STREQUAL "XBUDDY_EXTENSION"
    OR ${BOARD} STREQUAL "XL_DEV_KIT_XLB"
+   OR ${PRINTER} STREQUAL "COREONE"
    )
   set(CONNECT
       "NO"
