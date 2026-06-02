@@ -114,7 +114,21 @@ constexpr GcodeMacro kMacros[] = {
     { "BED_MESH_CLEAR", "M420 S0" },
     { "QUERY_ENDSTOPS", "M119" },
     { "GET_POSITION", "M114" },
+    // Friendly default beep: 440 Hz for 100 ms. M300 also accepts S/P
+    // overrides if the user passes them directly (Marlin parses M300
+    // independently of this macro).
+    { "SOUND_BEEP", "M300 S440 P100" },
+    { "BEEP", "M300 S440 P100" },
 };
+
+// Pause-at-height target Z (millimetres, logical coords). Set by the
+// PAUSE_AT_HEIGHT dispatcher; cleared atomically once a WS poll sees
+// vars.logical_curr_pos[2] reach it (only one connection wins the
+// compare-exchange and fires the pause). -1.0f = disarmed.
+//
+// Read+armed-clear happens in WebSocketHandler::step() (the per-poll
+// hook). Not persistent across reboots — set it again after a flash.
+static std::atomic<float> g_pause_at_z { -1.0f };
 
 // Best-effort dispatcher for Klipper-style commands Fluidd / OrcaSlicer
 // like to send. Returns true if the command was fully handled here
@@ -253,6 +267,17 @@ bool try_dispatch_klipper_command(const char *line) {
         // Klipper interactive bed-touch probe. Buddy's loadcell
         // auto-probes; there's no interactive equivalent. Swallow so
         // Fluidd's Tune view button doesn't log-spam.
+        return true;
+    }
+    if (starts_with(line, "PAUSE_AT_HEIGHT")) {
+        // Klipper: PAUSE_AT_HEIGHT Z=<mm>. Arm a one-shot trigger that
+        // fires print_pause() when logical Z reaches the target. The
+        // per-poll check lives in WebSocketHandler::step(); whichever
+        // WS connection sees Z first wins the compare-exchange and
+        // fires the pause. Pass Z=0 (or omit) to disarm.
+        const char *z_eq = std::strstr(line, "Z=");
+        const float target = z_eq ? std::strtof(z_eq + 2, nullptr) : -1.0f;
+        g_pause_at_z.store(target > 0.0f ? target : -1.0f, std::memory_order_release);
         return true;
     }
     if (starts_with(line, "EMERGENCY_STOP")) {
@@ -1146,7 +1171,10 @@ size_t WebSocketHandler::render_database_get_item(int id, const char *key) {
                 "{\"name\":\"BED_MESH_CALIBRATE\",\"visible\":true,\"categoryId\":\"calibration\"},"
                 "{\"name\":\"BED_MESH_CLEAR\",\"visible\":true,\"categoryId\":\"calibration\"},"
                 "{\"name\":\"QUERY_ENDSTOPS\",\"visible\":true,\"categoryId\":\"misc\"},"
-                "{\"name\":\"GET_POSITION\",\"visible\":true,\"categoryId\":\"misc\"}"
+                "{\"name\":\"GET_POSITION\",\"visible\":true,\"categoryId\":\"misc\"},"
+                "{\"name\":\"SOUND_BEEP\",\"visible\":true,\"categoryId\":\"misc\"},"
+                "{\"name\":\"BEEP\",\"visible\":false,\"categoryId\":\"misc\"},"
+                "{\"name\":\"PAUSE_AT_HEIGHT\",\"visible\":true,\"categoryId\":\"misc\"}"
             "],\"categories\":["
                 "{\"id\":\"heating\",\"name\":\"Heating\"},"
                 "{\"id\":\"motion\",\"name\":\"Motion\"},"
@@ -1390,6 +1418,24 @@ size_t WebSocketHandler::render_notify_status_update(uint8_t *out_buf, size_t ou
     const float pos_x = vars.logical_curr_pos[0];
     const float pos_y = vars.logical_curr_pos[1];
     const float pos_z = vars.logical_curr_pos[2];
+
+    // PAUSE_AT_HEIGHT trigger check. If armed and Z has reached target,
+    // atomically swap-to-disarmed (so only the first WS connection
+    // seeing the crossing wins) and fire print_pause. Only fires while
+    // a print is actually in progress, to avoid false triggers from
+    // G29 probing / homing / manual jogs.
+    {
+        float target = g_pause_at_z.load(std::memory_order_acquire);
+        if (target > 0.0f && pos_z >= target
+            && (vars.print_state == marlin_server::State::Printing
+                || vars.print_state == marlin_server::State::Resuming_UnparkHead_ZE
+                || vars.print_state == marlin_server::State::Resuming_UnparkHead_XY)) {
+            if (g_pause_at_z.compare_exchange_strong(target, -1.0f, std::memory_order_acq_rel)) {
+                marlin_client::print_pause();
+            }
+        }
+    }
+
     // Tune-view fields. Moonraker exposes speed/flow as ratios (1.0 = 100%);
     // Marlin stores them as integer percent. Fan is 0..255 in Marlin, 0..1
     // for the Moonraker fan.speed object.
