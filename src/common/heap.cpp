@@ -100,6 +100,19 @@ StackOverflowChecker &isr_stack_overflow_checker() {
     return checker;
 }
 
+// Peak watermark of sbrk-extended heap, for the firmware-audit RPC.
+// Updated inside _sbrk_r under the critical section; read by
+// heap_max_ever_used() from anywhere. Returns the high-water mark of
+// `current_heap_end() - heap_start` in bytes — i.e. the most heap the
+// firmware has EVER asked sbrk to hand it. Doesn't shrink as malloc
+// frees occur (sbrk never gives memory back).
+static char *peak_heap_end = nullptr;
+
+extern "C" uint32_t heap_max_ever_used(void) {
+    char *p = peak_heap_end;
+    return p ? static_cast<uint32_t>(p - heap_start) : 0;
+}
+
 void *_sbrk_r([[maybe_unused]] struct _reent *pReent, int incr) {
     UBaseType_t usis; // saved interrupt status
 
@@ -114,6 +127,9 @@ void *_sbrk_r([[maybe_unused]] struct _reent *pReent, int incr) {
     }
     // 'incr' of memory is available: update accounting and return it.
     current_heap_end() += incr;
+    if (current_heap_end() > peak_heap_end) {
+        peak_heap_end = current_heap_end();
+    }
     EXIT_CRITICAL_SECTION(usis);
     return (char *)previous_heap_end;
 }
