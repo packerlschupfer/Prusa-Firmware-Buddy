@@ -31,9 +31,15 @@
 #include <mbedtls/sha1.h>
 
 #include <lwip/def.h>
+#include <lwip/stats.h>
+#include <lwip/priv/memp_priv.h>
 #include <FreeRTOS.h>
 #include <task.h>
 #include <malloc.h>
+
+#if LWIP_STATS && MEMP_STATS
+extern "C" const struct memp_desc *const memp_pools[MEMP_MAX];
+#endif
 
 extern "C" uint32_t heap_total_size(void);
 extern "C" uint32_t heap_max_ever_used(void);
@@ -1943,9 +1949,9 @@ size_t WebSocketHandler::handle_text_frame_into_buf() {
         constexpr UBaseType_t MAX_TASKS = 24;
         static TaskStatus_t task_status[MAX_TASKS];
         UBaseType_t n = uxTaskGetSystemState(task_status, MAX_TASKS, nullptr);
-        // Use a bigger static buffer so the JSON for all ~15 tasks fits.
-        // The scratch_buf member is only 224 B; we'd truncate after ~3.
-        static char diag_buf[1024];
+        // Bigger static buffer to fit all 15 tasks + ~16 lwIP memp pools.
+        // The scratch_buf member is only 224 B; we'd truncate way too early.
+        static char diag_buf[2048];
         char *p = diag_buf;
         char *e = diag_buf + sizeof diag_buf;
         p += snprintf(p, e - p,
@@ -1961,7 +1967,24 @@ size_t WebSocketHandler::handle_text_frame_into_buf() {
                 t.pcTaskName ? t.pcTaskName : "?",
                 (unsigned long)t.usStackHighWaterMark);
         }
+#if LWIP_STATS && MEMP_STATS
+        // lwIP memp pool watermarks. Tells us which CCMRAM-resident pools
+        // (PBUF, TCP_PCB, NETBUF, ...) are over-provisioned vs near-capacity.
+        // Gated on the build option; harmless if it's off.
+        p += snprintf(p, e - p, "],\"lwip\":[");
+        for (int i = 0; i < MEMP_MAX && p + 80 < e; ++i) {
+            const struct stats_mem *st = lwip_stats.memp[i];
+            const struct memp_desc *mp = memp_pools[i];
+            p += snprintf(p, e - p, "%s{\"n\":\"%.20s\",\"used\":%u,\"max\":%u,\"avail\":%u,\"err\":%u}",
+                (i ? "," : ""),
+                (mp && mp->desc) ? mp->desc : "?",
+                (unsigned)st->used, (unsigned)st->max,
+                (unsigned)st->avail, (unsigned)st->err);
+        }
         p += snprintf(p, e - p, "]}");
+#else
+        p += snprintf(p, e - p, "]}");
+#endif
         result_str = diag_buf;
     } else if (method == "access.info") {
         result_str = "{\"default_source\":\"moonraker\",\"available_sources\":[\"moonraker\"],\"login_required\":true}";
