@@ -31,6 +31,11 @@
 #include <mbedtls/sha1.h>
 
 #include <lwip/def.h>
+#include <FreeRTOS.h>
+#include <task.h>
+#include <malloc.h>
+
+extern "C" uint32_t heap_total_size(void);
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -1913,6 +1918,40 @@ size_t WebSocketHandler::handle_text_frame_into_buf() {
             static_cast<long>(ns.last_lwip_err),
             static_cast<unsigned long>(ticks_ms() / 1000));
         std::strncpy(scratch_buf, buf, sizeof scratch_buf - 1);
+        result_str = scratch_buf;
+    } else if (method == "printer.system.diagnostics") {
+        // Runtime memory + stack instrumentation for the firmware audit.
+        // Buddy unifies FreeRTOS heap and newlib heap (see src/common/heap.cpp),
+        // so xPortGetFreeHeapSize() and mallinfo() report the same pool.
+        //
+        // Returns:
+        //   heap.{total, free, in_use}  — bytes; total is the contiguous
+        //                                  span between .bss end and the
+        //                                  reserved ISR stack at top of RAM
+        //   tasks[]                     — per-task name + stack high
+        //                                  water mark IN WORDS (×4 = bytes
+        //                                  of slack still available)
+        const size_t total = heap_total_size();
+        const size_t free  = xPortGetFreeHeapSize();
+        const struct mallinfo mi = mallinfo();
+        constexpr UBaseType_t MAX_TASKS = 24;
+        static TaskStatus_t task_status[MAX_TASKS];
+        UBaseType_t n = uxTaskGetSystemState(task_status, MAX_TASKS, nullptr);
+        char *p = scratch_buf;
+        char *e = scratch_buf + sizeof scratch_buf;
+        p += snprintf(p, e - p,
+            "{\"heap\":{\"total\":%lu,\"free\":%lu,\"in_use\":%lu},"
+             "\"tasks\":[",
+            (unsigned long)total, (unsigned long)free,
+            (unsigned long)mi.uordblks);
+        for (UBaseType_t i = 0; i < n && p + 80 < e; ++i) {
+            const auto &t = task_status[i];
+            p += snprintf(p, e - p, "%s{\"n\":\"%.16s\",\"hwm\":%lu}",
+                (i ? "," : ""),
+                t.pcTaskName ? t.pcTaskName : "?",
+                (unsigned long)t.usStackHighWaterMark);
+        }
+        p += snprintf(p, e - p, "]}");
         result_str = scratch_buf;
     } else if (method == "access.info") {
         result_str = "{\"default_source\":\"moonraker\",\"available_sources\":[\"moonraker\"],\"login_required\":true}";
