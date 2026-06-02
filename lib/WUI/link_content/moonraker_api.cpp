@@ -471,6 +471,69 @@ Selector::Accepted MoonrakerApi::accept(const RequestParser &parser, Step &out) 
         return Accepted::Accepted;
     }
 
+    // GET /server/files/roots — Moonraker file-tree root enumeration.
+    // Buddy only exposes one location (USB) so return a single "gcodes"
+    // root pointing at /usb/. OrcaSlicer falls back gracefully when this
+    // returns 501, but with a warning per call; this stub silences it.
+    // Permissions "rwd" = read/write/delete, matching what we actually
+    // implement via /server/files/{upload,list,delete}.
+    if (uri == "/server/files/roots") {
+        static constexpr char roots_response[] =
+            "{\"result\":[{\"name\":\"gcodes\",\"path\":\"/usb\",\"permissions\":\"rwd\"}]}";
+        serve_static_json(roots_response, parser, out);
+        return Accepted::Accepted;
+    }
+
+    // GET /server/job_queue/status — Moonraker job-queue contract.
+    // Buddy has no queue subsystem (jobs are started one-at-a-time via
+    // /printer/print/start), so we return an empty queue in ready state.
+    // Same shape as the WS handler at server.job_queue.status.
+    if (uri == "/server/job_queue/status") {
+        static constexpr char queue_response[] =
+            "{\"result\":{\"queued_jobs\":[],\"queue_state\":\"ready\"}}";
+        serve_static_json(queue_response, parser, out);
+        return Accepted::Accepted;
+    }
+
+    // GET /server/history/list — completed print history. We don't keep
+    // a persistent history on the HTTP side (the WS handler has an
+    // in-memory ring; HTTP returns empty here). Clients that need real
+    // history use the WS server.history.list method.
+    if (uri.starts_with("/server/history/list")) {
+        static constexpr char history_list[] =
+            "{\"result\":{\"count\":0,\"jobs\":[]}}";
+        serve_static_json(history_list, parser, out);
+        return Accepted::Accepted;
+    }
+
+    // GET /server/history/totals — aggregate stats. Zeroed on HTTP side
+    // (see history/list comment). WS server.history.totals has the live
+    // values from the in-memory ring.
+    if (uri == "/server/history/totals") {
+        static constexpr char history_totals[] =
+            "{\"result\":{\"job_totals\":{\"total_jobs\":0,\"total_time\":0,"
+            "\"total_print_time\":0,\"total_filament_used\":0,"
+            "\"longest_job\":0,\"longest_print\":0}}}";
+        serve_static_json(history_totals, parser, out);
+        return Accepted::Accepted;
+    }
+
+    // GET /server/announcements/list, /server/webcams/list — Moonraker
+    // polling clients hit these on startup. We don't host either; reply
+    // with empty arrays to silence the per-call warning.
+    if (uri == "/server/announcements/list") {
+        static constexpr char ann_response[] =
+            "{\"result\":{\"entries\":[],\"feeds\":[]}}";
+        serve_static_json(ann_response, parser, out);
+        return Accepted::Accepted;
+    }
+    if (uri == "/server/webcams/list") {
+        static constexpr char webcams_response[] =
+            "{\"result\":{\"webcams\":[]}}";
+        serve_static_json(webcams_response, parser, out);
+        return Accepted::Accepted;
+    }
+
     // GET /server/files/list — list all files in /usb/. Moonraker contract
     // accepts a `root` query param (default "gcodes"); we expose a single
     // root which maps to /usb/ regardless of what the client asks for.
