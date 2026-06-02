@@ -147,7 +147,7 @@ RAM cost is the entire price of the dev-allpatches feature set.
 |---:|---:|---:|---|
 | +11,184 | 14,864 | 3,680 | `(anon)::server` (BUFF_SIZE doubled to 2×TCP_MSS, BUFF_CNT 2→6) |
 | +8,193 | 8,193 | 0 | `snapshot_serial_log_into_static::buf` (`/api/v1/log`) |
-| +8,192 | 8,192 | 0 | `nhttp::printer::ring` (file-event ring) |
+| +8,192 | 8,192 | 0 | `serial_log::ring` (the rolling Marlin-output ring that feeds `/api/v1/log`) |
 | +6,144 | 6,144 | 0 | `g_mesh_buf` (UBL JSON staging for `/server/files/metadata` mesh dumps) |
 | +5,742 | 5,742 | 0 | `g_ws_frame_pool` (3 × WS frame slots, 1916 B each) |
 | +4,112 | 4,112 | 0 | `g_gcode_log` (notify_gcode_response ring) |
@@ -164,7 +164,7 @@ If we ever need to reclaim, the cheapest shrinks are:
 |---|---:|---|
 | `BUFF_CNT 6 → 4` | 4 KB | fewer concurrent HTTP slot buffers |
 | `serial_log` 8K → 4K | 4 KB | `/api/v1/log` returns half as much |
-| `nhttp::printer::ring` 8K → 4K | 4 KB | file-event coalescing under bursts |
+| `serial_log` ring 8K → 4K + snapshot 8K → 4K | 8 KB | `/api/v1/log` window halves; debugging capture window halves |
 | `g_mesh_buf` 6K → 3K + chunking | 3 KB | mesh-fetch needs two RTs |
 
 That's another **15 KB recoverable** beyond the Connect-off + the 13 KB
