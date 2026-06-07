@@ -212,6 +212,19 @@ where our heap pressure lives, so this is *information* rather than
 feature needing a second 1.5 KB lwIP alloc would fail; raise
 `MEMP_NUM_MEM_1512` in `lwipopts.h` first if you ever add one.
 
+**Under-load update 2026-06-06:** during a real PETG print with
+Fluidd connected and the diagnostics RPC polling, `MALLOC_1512`
+recorded **`err=10542`** — over ten thousand allocation failures
+since boot. lwIP retries internally so nothing user-visible breaks,
+but the churn is wasteful. Bumping `MEMP_NUM_MEM_1512` from 1 to 2
+or 3 (cost: 1.5-3 KB CCMRAM, separate from main-RAM heap budget)
+is now an actually-justified change, not just hypothetical. Also
+under-print: heap peak rose from 23.8 KB → 25.4 KB (cushion 6.6 KB
+before BSOD, down from 9.8 KB) — partly the cost of the diagnostics
+RPC + lwIP stats arrays + new macros added 2026-06-02/03. Still
+safe but worth tracking; new static additions should now stay
+< 4 KB.
+
 ## Follow-ups (still on the shelf)
 
 1. **(done)** ~~lwIP `memp_stats`~~ — captured above.
