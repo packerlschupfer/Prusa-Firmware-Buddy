@@ -250,22 +250,88 @@ Caveats:
 4. Hardware compatibility — the bootloader's `start_app()` does final
    sanity checks; we need to ensure Klipper's startup doesn't trip them.
 
-## Open questions for the design pass (9b-3)
+## Open questions for the design pass (9b-3) — RESOLVED
 
-1. **Klipper H5 startup vector handling** — does Klipper compute its
-   own `SCB->VTOR` value from a Kconfig flash-start setting, or is it
-   hard-coded? (Klipper-port chat has the H5 overlay; ask them.)
-2. **FreeRTOS coexistence** — does Klipper assume "I own the whole
-   chip" at startup, or is it tolerant of pre-jumped-from-bootloader
-   state? The bootloader's hand-off is "set MSP, set PC, branch" —
-   essentially a cold start from Klipper's perspective.
-3. **The `.fw_descriptor` section** — can Klipper's link script
-   produce one with the 80 B zero-pad layout, or do we need a
-   post-link tool to splat it in? (Pretty easy either way.)
-4. **Resource image rebuild** — once `XBUDDY_EXTENSION_BINARY_PATH`
-   changes, does the existing CMake dep graph rebuild the resources
-   image correctly? Should — `add_resource` ought to track the
-   variable as a dep — but worth verifying with a `touch` test.
+All four questions from the original handoff to the klipper-port chat
+plus two new ones they surfaced have been answered. Captured for
+reference. See also
+`~/Documents/ai/prusa_core_one_plus/klipper_h5_puppy_design_answers.md`
+for the klipper-port chat's full response.
+
+**Q1 (VTOR relocation):** ✅ already Kconfig-driven in Klipper's H5
+build. `armcm_main` writes `SCB->VTOR = (uint32_t)VectorTable`, with
+`VectorTable` at the start of `.text` and `.text` placed at
+`CONFIG_FLASH_APPLICATION_ADDRESS`. The one required change is adding
+`MACH_STM32H5` to the existing `CONFIG_STM32_FLASH_START_2000` Kconfig
+gate, then setting `=y`. Zero C changes.
+
+**Q2 (startup cleanliness):** ✅ clean. Klipper has no FreeRTOS; its
+`ResetHandler` re-inits `.data`/`.bss`, then `armcm_main` runs the
+expected cold-boot init. Hand-off is reset-equivalent.
+
+**Q3 (`.fw_descriptor` section):** ✅ resolved via post-link pad. Build
+Klipper normally at `0x08002000`, then a small python/objcopy step
+pads the `.bin` to exactly 122,880 B (zeros, last 128 B = descriptor
+placeholder). The bootloader does not validate descriptor contents
+during install (the salted fingerprint covers it as data; the
+descriptor's `stored_type` field is only written post-runtime by the
+crash-dump path).
+
+**Q4 (size budget):** ✅ ~89 KB free. Klipper H5 binary (with the full
+enclosure config) is ~33 KB; app slot is 122,752 B usable + 128 B
+descriptor. Plenty of headroom.
+
+**Q-new-1 (bootloader clock state at hand-off):** ✅ **HSI / PLL off.**
+From `Prusa-Bootloader-Puppy/stm32-h5hal/system_stm32h5xx.c` header
+comment block: "System Clock source = HSI, SYSCLK = 64 MHz, PLL1_SRC =
+No clock, PLL2_SRC = No clock." Klipper's `clock_setup()` receives
+exactly the cold-reset state it expects. No defensive HSI preamble
+required (though it's a 3-line idempotent safety addition if desired).
+
+**Q-new-2 (fingerprint range — fixed or written?):** ✅ **fixed, FULL
+app slot, including descriptor.** From
+`Prusa-Bootloader-Puppy/SelfProgramCommon.cpp:48-51`:
+
+```cpp
+void SelfProgram::calculateSaltedFingerprint(uint32_t salt) {
+    calculateFingerprint(&salt, applicationSize, appFwFingerprint);
+}
+```
+
+With `applicationSize = 128*1024 - FLASH_APP_OFFSET = 122,880 B`
+(from `cmake/arch-stm32-h5hal.cmake:54`). The hash covers everything
+from `0x08002000` to `0x08020000`, inclusive of the 128 B descriptor.
+
+**Implication for Klipper-puppy delivery:** the binary shipped as
+`XBUDDY_EXTENSION_BINARY_PATH` MUST be padded to exactly 122,880 B —
+shipping just the ~33 KB app would produce a fingerprint mismatch
+(Buddy hashes the file as-shipped; bootloader hashes the full flash
+slot after writing). Post-link pad is mandatory, not optional.
+
+Note: the bootloader also has an "unsalted" fingerprint path (boot-
+time integrity check, compares app-only hash against the fingerprint
+field stored IN the descriptor):
+
+```cpp
+bool SelfProgram::checkUnsaltedFingerprint(...) {
+    calculateFingerprint(nullptr, applicationSize - FW_DESCRIPTOR_SIZE, ...);
+}
+```
+
+This is not used during the install flow Buddy drives — Buddy
+exclusively uses the salted variant. Listed for completeness.
+
+**Q-new-3 (bench-unit one-time bootloader restore):** ✅ confirmed in
+plan. Our H503 currently runs Klipper-noboot @0x08000000; we'll
+SWD-or-USB-DFU restore an 8 KB Prusa-Bootloader-Puppy to 0x08000000
+once before the RS-485 install path works. End users (already on
+stock with bootloader installed) skip this step.
+
+**Q-new-4 (RAM_SIZE / ISR_STACK / USB_BOOT_FLAG collision):** ✅ no
+collision. Klipper's `USB_BOOT_FLAG` at `RAM_END-1024 = 0x20007C00`
+lives in the ISR_STACK region but is RAM_VALUE-driven; reset-equivalent
+hand-off re-inits RAM, so any prior state is wiped before either
+side reads.
 
 ## References (within this repo)
 
