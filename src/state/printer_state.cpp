@@ -433,8 +433,15 @@ StateWithDialog get_state_with_dialog(bool ready) {
         break;
     case ClientFSM::QuickPause: {
         const Response *available_responses = ClientResponses::get_available_responses(GetEnumFromPhaseIndex<PhasesQuickPause>(data.GetPhase())).data();
-        return { state, ErrCode::CONNECT_QUICK_PAUSE, fsm_gen, available_responses };
-        break;
+        StateWithDialog result { state, ErrCode::CONNECT_QUICK_PAUSE, fsm_gen, available_responses };
+        // Prusa's M0 handler (src/marlin_stubs/M0.cpp) packs the message
+        // pointer (parser.string_arg) into PhaseData. Unpack it so remote
+        // clients can see the user-facing text (e.g. "Insert magnets").
+        const char *msg = fsm::deserialize_data<const char *>(data.GetData());
+        if (result.dialog.has_value()) {
+            result.dialog->text = msg;
+        }
+        return result;
     }
 #if ENABLED(CRASH_RECOVERY)
     case ClientFSM::CrashRecovery:
