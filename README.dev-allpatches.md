@@ -1,11 +1,41 @@
 # dev-allpatches — Core One+ extras for Prusa-Firmware-Buddy
 
+> **⚠️ ARCHIVED 2026-07-26 — no longer actively maintained.**
+>
+> I've moved my Core One+ to **[Klipper (coreone-firmware
+> fork)](https://github.com/packerlschupfer/coreone-firmware)** as the
+> daily-driver firmware and stopped further Buddy-side development.
+> This branch was rebuilt clean on top of current `upstream/master`
+> (11 upstream-open PRs cherry-picked + audit tooling + docs), tagged
+> `dev-allpatches-archived-2026-07-26`, and left as-is.
+>
+> **What still works:**
+> - The 11 open PRs against upstream Prusa (#5228, #5229, #5230,
+>   #5302, #5303, #5304, #5305, #5307, #5308, #5309, #5400) each live
+>   on their own `pr/*` branch and are reviewable independently.
+> - The audit toolkit + `docs/` directory (RAM map, feature flags,
+>   runtime diagnostics, PuppyBus protocol, chamber-fan control).
+>
+> **What is NOT maintained:**
+> - Rebases against future upstream drift
+> - Feature follow-ups (M0 message text, `gcode` variable exposure,
+>   BBF install path for `_noboot` builds, etc.)
+> - The Moonraker WS/HTTP shim (was in the previous tangled version;
+>   was removed from this rebuild). Not coming back — see the Klipper
+>   fork instead for a Moonraker-native experience.
+>
+> Anyone forking to continue can pick up from
+> `dev-allpatches-archived-2026-07-26` and rebase or cherry-pick as
+> needed.
+
+---
+
 This branch (`dev-allpatches` on `packerlschupfer/Prusa-Firmware-Buddy`)
-is a personal-build cumulative branch carrying every Core One+
-modification I've made on top of the upstream Prusa Buddy firmware.
+was a personal-build cumulative branch carrying every Core One+
+modification I made on top of the upstream Prusa Buddy firmware.
 It is **not stock Prusa** and **not intended for upstreaming as a
 single PR** — the individual patches it bundles either already have
-open upstream PRs (#5228-30, #5302-9) or are too opinionated for
+open upstream PRs (#5228-30, #5302-5309, #5400) or are too opinionated for
 upstream's taste.
 
 ## Who this branch is for
