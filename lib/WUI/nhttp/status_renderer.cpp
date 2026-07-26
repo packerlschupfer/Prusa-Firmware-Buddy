@@ -35,6 +35,9 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
     uint32_t dialog_id = has_dialog ? state_with_dialog.dialog->dialog_id.to_uint32_t() : 0;
     uint32_t dialog_code = state_with_dialog.code_num();
     const Response *dialog_buttons = state_with_dialog.buttons();
+    // Optional user-facing message (currently populated by Prusa's M0 handler
+    // — see src/marlin_stubs/M0.cpp; the pointer is packed into PhaseData).
+    const char *dialog_message = has_dialog ? state_with_dialog.dialog->text : nullptr;
 
     // Keep the indentation of the JSON in here!
     // clang-format off
@@ -97,6 +100,7 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
             JSON_FIELD_OBJ("dialog");
                 JSON_FIELD_INT("id", dialog_id) JSON_COMMA;
                 JSON_FIELD_INT("code", dialog_code) JSON_COMMA;
+                JSON_FIELD_STR("message", dialog_message ? dialog_message : "") JSON_COMMA;
                 JSON_FIELD_STR("button0", (dialog_buttons && dialog_buttons[0] != Response::_none) ? to_str(dialog_buttons[0]) : "") JSON_COMMA;
                 JSON_FIELD_STR("button1", (dialog_buttons && dialog_buttons[0] != Response::_none && dialog_buttons[1] != Response::_none) ? to_str(dialog_buttons[1]) : "") JSON_COMMA;
                 JSON_FIELD_STR("button2", (dialog_buttons && dialog_buttons[0] != Response::_none && dialog_buttons[1] != Response::_none && dialog_buttons[2] != Response::_none) ? to_str(dialog_buttons[2]) : "") JSON_COMMA;
