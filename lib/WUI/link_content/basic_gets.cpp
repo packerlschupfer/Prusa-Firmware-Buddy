@@ -256,13 +256,8 @@ JsonResult get_settings(size_t resume_point, JsonOutput &output) {
     auto &cs = config_store();
     auto &vars = marlin_vars();
 
-    // PID
-    const float hot_p = cs.pid_nozzle_p.get();
-    const float hot_i = cs.pid_nozzle_i.get();
-    const float hot_d = cs.pid_nozzle_d.get();
-    const float bed_p = cs.pid_bed_p.get();
-    const float bed_i = cs.pid_bed_i.get();
-    const float bed_d = cs.pid_bed_d.get();
+    // PID params were removed from config_store as part of Prusa's BFW-8271
+    // cleanup (2026-01-29). Values are now factory-baked and not exposed.
 
     // Steppers (steps per mm)
     const float spm_x = cs.axis_steps_per_unit_x.get();
@@ -309,19 +304,6 @@ JsonResult get_settings(size_t resume_point, JsonOutput &output) {
             JSON_FIELD_FFIXED("nozzle_diameter", static_cast<double>(nozzle_diameter), 2) JSON_COMMA;
             JSON_FIELD_FFIXED("z_offset", static_cast<double>(z_offset), 3) JSON_COMMA;
             JSON_FIELD_INT("extrude_min_temp", extrude_min_temp);
-        JSON_OBJ_END JSON_COMMA;
-
-        JSON_FIELD_OBJ("pid");
-            JSON_FIELD_OBJ("hotend");
-                JSON_FIELD_FFIXED("p", static_cast<double>(hot_p), 3) JSON_COMMA;
-                JSON_FIELD_FFIXED("i", static_cast<double>(hot_i), 3) JSON_COMMA;
-                JSON_FIELD_FFIXED("d", static_cast<double>(hot_d), 3);
-            JSON_OBJ_END JSON_COMMA;
-            JSON_FIELD_OBJ("bed");
-                JSON_FIELD_FFIXED("p", static_cast<double>(bed_p), 3) JSON_COMMA;
-                JSON_FIELD_FFIXED("i", static_cast<double>(bed_i), 3) JSON_COMMA;
-                JSON_FIELD_FFIXED("d", static_cast<double>(bed_d), 3);
-            JSON_OBJ_END;
         JSON_OBJ_END JSON_COMMA;
 
         JSON_FIELD_OBJ("steppers");
